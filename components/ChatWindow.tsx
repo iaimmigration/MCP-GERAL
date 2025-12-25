@@ -2,8 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { AgentConfig, ChatMessage, ToolType, MessageAttachment, Priority, ActionReminder } from '../types';
-import { executeAgentActionStream } from '../services/geminiService';
-import { runSimulation, USABILITY_TEST_SCRIPT } from '../services/simulationService';
+import { executeAgentActionStream, generateSmartTitle, generateSpeech, decodeBase64, decodeAudioData } from '../services/geminiService';
+import { runSimulation } from '../services/simulationService';
 import { useForgeStore } from '../store';
 
 interface ChatWindowProps {
@@ -13,7 +13,7 @@ interface ChatWindowProps {
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent }) => {
-  const { activeSessionId, addMessage, updateLastMessage, createReminder, toggleReminder, reminders } = useForgeStore();
+  const { activeSessionId, addMessage, updateLastMessage, createReminder, toggleReminder, reminders, renameSession } = useForgeStore();
   
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -21,16 +21,61 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
   const [currentSimStep, setCurrentSimStep] = useState<number>(-1);
   const [pendingAttachments, setPendingAttachments] = useState<MessageAttachment[]>([]);
   const [showTaskLedger, setShowTaskLedger] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isTyping]);
 
+  // TRIGGER: Smart Titling após 3 mensagens
+  useEffect(() => {
+    if (messages.length === 3 && activeSessionId) {
+      const triggerTitling = async () => {
+        const smartTitle = await generateSmartTitle(messages);
+        renameSession(activeSessionId, smartTitle);
+      };
+      triggerTitling();
+    }
+  }, [messages.length, activeSessionId, renameSession]);
+
   const sanitizeContent = (content: string) => {
     return DOMPurify.sanitize(content);
+  };
+
+  const handleSpeech = async (text: string, msgId: string) => {
+    if (isPlayingAudio === msgId) return;
+    setIsPlayingAudio(msgId);
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      const ctx = audioContextRef.current;
+      const base64 = await generateSpeech(text.replace(/\[.*?\]/g, ''));
+      if (!base64) {
+        setIsPlayingAudio(null);
+        return;
+      }
+
+      // Gemini TTS returns raw PCM data which needs manual decoding
+      const audioBuffer = await decodeAudioData(
+        decodeBase64(base64),
+        ctx,
+        24000,
+        1
+      );
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => setIsPlayingAudio(null);
+      source.start();
+    } catch (e) {
+      console.error("Speech playback error:", e);
+      setIsPlayingAudio(null);
+    }
   };
 
   const parseAndExecuteTasks = (text: string) => {
@@ -141,6 +186,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4`}>
               <div className={`max-w-[85%] group relative ${msg.role === 'user' ? 'bg-blue-600 shadow-xl' : 'bg-slate-900 border border-slate-800 shadow-2xl'} rounded-3xl p-6 ${msg.role === 'user' ? 'rounded-tr-none' : 'rounded-tl-none'}`}>
+                
+                {msg.role === 'model' && (
+                  <button 
+                    onClick={() => handleSpeech(msg.content, `msg-${i}`)}
+                    className={`absolute -left-12 top-0 p-2 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all opacity-0 group-hover:opacity-100 ${isPlayingAudio === `msg-${i}` ? 'text-blue-400 border-blue-500/50 opacity-100' : ''}`}
+                  >
+                    {isPlayingAudio === `msg-${i}` ? (
+                      <div className="flex gap-0.5 items-end h-4 w-4">
+                        <div className="w-1 bg-blue-500 animate-[bounce_0.6s_infinite]"></div>
+                        <div className="w-1 bg-blue-500 animate-[bounce_0.8s_infinite]"></div>
+                        <div className="w-1 bg-blue-500 animate-[bounce_0.7s_infinite]"></div>
+                      </div>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    )}
+                  </button>
+                )}
+
                 {msg.role === 'model' && msg.thought && (
                   <div className="mb-4 p-4 bg-slate-950/50 border border-indigo-500/20 rounded-2xl text-[12px] font-mono text-indigo-300/60 leading-relaxed">{msg.thought}</div>
                 )}

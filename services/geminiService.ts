@@ -2,28 +2,68 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import { AgentConfig, ToolType, ChatMessage, MessageAttachment } from "../types";
 
+// Helper for decoding base64 strings to Uint8Array
+export function decodeBase64(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Helper for decoding raw PCM audio data from the Gemini API
+export async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
 export const executeAgentActionStream = async (
   agent: AgentConfig,
   userMessage: string,
   history: ChatMessage[],
   attachments: MessageAttachment[] = [],
   onChunk: (text: string, grounding?: { uri: string; title: string }[], thought?: string, images?: string[]) => void,
-  // Fixed type error by including 'success' in log levels
   onLog?: (message: string, level: 'debug' | 'info' | 'warn' | 'error' | 'success') => void
 ): Promise<void> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  onLog?.(`Iniciando kernel para agente: ${agent.name} (Modelo: ${agent.model})`, 'info');
   
+  let effectiveModel = agent.model;
   const tools: any[] = [];
+  const hasMaps = agent.tools.includes(ToolType.GOOGLE_MAPS);
+
+  // Gemini 2.5 series is required for Maps grounding
+  if (hasMaps) {
+    effectiveModel = 'gemini-2.5-flash';
+  }
+
+  onLog?.(`Iniciando kernel para agente: ${agent.name} (Modelo: ${effectiveModel})`, 'info');
+  
   if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) {
     tools.push({ googleSearch: {} });
     onLog?.("Módulo Google Search ativado.", 'debug');
   }
-  if (agent.tools.includes(ToolType.GOOGLE_MAPS)) {
+
+  if (hasMaps) {
+    // googleMaps can only be used with googleSearch, not other tools like code interpreter.
     tools.push({ googleMaps: {} });
     onLog?.("Módulo Google Maps ativado.", 'debug');
-  }
-  if (agent.tools.includes(ToolType.CODE_INTERPRETER)) {
+  } else if (agent.tools.includes(ToolType.CODE_INTERPRETER)) {
     tools.push({ codeExecution: {} });
     onLog?.("Sandbox de execução de código ativada.", 'debug');
   }
@@ -77,8 +117,7 @@ export const executeAgentActionStream = async (
     temperature: agent.temperature ?? 0.7,
   };
 
-  // Correctly apply thinkingBudget based on Gemini 3 guidelines
-  if (agent.thinkingBudget !== undefined && agent.thinkingBudget > 0) {
+  if (agent.thinkingBudget !== undefined && agent.thinkingBudget > 0 && !hasMaps) {
     config.thinkingConfig = { thinkingBudget: agent.thinkingBudget };
     onLog?.(`Budget de reflexão configurado: ${agent.thinkingBudget} tokens.`, 'debug');
   }
@@ -86,7 +125,7 @@ export const executeAgentActionStream = async (
   try {
     onLog?.("Enviando payload para API Gemini...", 'info');
     const responseStream = await ai.models.generateContentStream({
-      model: agent.model,
+      model: effectiveModel,
       contents: contents,
       config: config,
     });
@@ -98,21 +137,17 @@ export const executeAgentActionStream = async (
 
     for await (const chunk of responseStream) {
       chunkCount++;
-      // Correct property access for text
       const textChunk = chunk.text;
       if (textChunk) {
         fullText += textChunk;
         if (chunkCount === 1) onLog?.("Primeiro chunk de resposta recebido.", 'success');
       }
       
-      // Extraction of thought parts if available
       const thoughtPart = (chunk as any).candidates?.[0]?.content?.parts?.find((p: any) => p.thought)?.thought;
       if (thoughtPart) {
         fullThought += thoughtPart;
-        onLog?.("Reflexão (Thought) detectada no stream.", 'debug');
       }
 
-      // Handling Grounding Metadata during stream
       const metadata = chunk.candidates?.[0]?.groundingMetadata;
       if (metadata?.groundingChunks) {
         metadata.groundingChunks.forEach((c: any) => {
@@ -120,14 +155,12 @@ export const executeAgentActionStream = async (
             const exists = accumulatedGrounding.some(g => g.uri === c.web.uri);
             if (!exists) {
               accumulatedGrounding.push({ uri: c.web.uri, title: c.web.title });
-              onLog?.(`Grounding detectado: ${c.web.title}`, 'debug');
             }
           }
           if (c.maps) {
             const exists = accumulatedGrounding.some(g => g.uri === c.maps.uri);
             if (!exists) {
               accumulatedGrounding.push({ uri: c.maps.uri, title: c.maps.title });
-              onLog?.(`Localização identificada via Maps.`, 'debug');
             }
           }
         });
@@ -142,9 +175,8 @@ export const executeAgentActionStream = async (
 
     onLog?.(`Stream finalizado com sucesso. Chunks totais: ${chunkCount}`, 'success');
 
-    // Check for explicit image generation triggers
     if (agent.tools.includes(ToolType.IMAGE_GEN) && (fullText.toLowerCase().includes("gerar imagem") || fullText.toLowerCase().includes("desenhe"))) {
-      onLog?.("Detectada solicitação de geração de imagem. Ativando engine secundária (Gemini 2.5 Flash Image).", 'info');
+      onLog?.("Detectada solicitação de geração de imagem. Ativando engine secundária.", 'info');
       const imgResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: [{ parts: [{ text: `High-fidelity industrial visualization: ${fullText}` }] }],
@@ -154,17 +186,10 @@ export const executeAgentActionStream = async (
       let generatedImages: string[] = [];
       for (const part of imgResponse.candidates[0].content.parts) {
         if (part.inlineData) {
-          generatedImages.push(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
+          generatedImages.push(`data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`);
         }
       }
-      onLog?.(`${generatedImages.length} imagens geradas com sucesso.`, 'success');
-      // Pass accumulated grounding to maintain context
-      onChunk(
-        fullText, 
-        accumulatedGrounding.length > 0 ? [...accumulatedGrounding] : undefined, 
-        fullThought, 
-        generatedImages
-      );
+      onChunk(fullText, accumulatedGrounding, fullThought, generatedImages);
     }
 
   } catch (error: any) {
@@ -174,11 +199,30 @@ export const executeAgentActionStream = async (
   }
 };
 
+export const generateSmartTitle = async (messages: ChatMessage[]): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const conversationContext = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ 
+        parts: [{ 
+          text: `Resuma esta conversa em um título técnico e curto (máximo 4 palavras) para uma aba de sistema operacional industrial. Retorne APENAS o título, sem aspas ou pontos finais.\n\nContexto:\n${conversationContext}` 
+        }] 
+      }]
+    });
+    return response.text?.trim() || "Nova Conversa";
+  } catch (e) {
+    return "Conversa MCP";
+  }
+};
+
 export const generateSpeech = async (text: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: text.slice(0, 500) }] }],
+    contents: [{ parts: [{ text: text.slice(0, 1000) }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: {

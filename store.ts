@@ -1,18 +1,18 @@
 
 import { create } from 'zustand';
-import { Dexie, type EntityTable } from 'dexie';
+// Use default import for Dexie to resolve type issues with .version() method
+import Dexie, { type EntityTable } from 'dexie';
 import { z } from 'zod';
 import { AgentConfig, ChatSession, AppState, ActionReminder, ChatMessage } from './types';
 import { DEFAULT_AGENTS } from './constants';
 
 // --- DATABASE LAYER (Dexie) ---
-// Using named import for Dexie to resolve the inheritance type error:
-// "Property 'version' does not exist on type 'ForgeDatabase'"
 class ForgeDatabase extends Dexie {
   state!: EntityTable<{ id: string; data: any }, 'id'>;
 
   constructor() {
     super('ForgeEnterpriseDB');
+    // Initialize versioning and stores for Dexie
     this.version(1).stores({
       state: 'id'
     });
@@ -32,6 +32,7 @@ const AppStateSchema = z.object({
 
 interface ForgeStore extends AppState {
   isHydrated: boolean;
+  isSaving: boolean;
   hydrate: () => Promise<void>;
   setActiveAgent: (id: string | null) => void;
   setActiveSession: (id: string | null) => void;
@@ -44,6 +45,7 @@ interface ForgeStore extends AppState {
   renameSession: (id: string, title: string) => void;
   createReminder: (reminder: Partial<ActionReminder>) => void;
   toggleReminder: (id: string) => void;
+  persist: () => Promise<void>;
   resetAll: () => Promise<void>;
 }
 
@@ -54,6 +56,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   sessions: [],
   reminders: [],
   isHydrated: false,
+  isSaving: false,
 
   hydrate: async () => {
     const saved = await db.state.get('main');
@@ -105,6 +108,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
         if (s.id === sessionId) {
           const newMessages = [...s.messages, message];
           let title = s.title;
+          // Fallback title for first message
           if (s.messages.length === 0 || s.title === 'Nova Conversa') {
             const clean = (message.content || 'Análise').replace(/\[.*?\]/g, '').trim();
             title = clean.slice(0, 32) + (clean.length > 32 ? '...' : '');
@@ -186,11 +190,17 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   },
 
   persist: async () => {
-    const { agents, activeAgentId, activeSessionId, sessions, reminders } = get();
-    await db.state.put({ 
-      id: 'main', 
-      data: { agents, activeAgentId, activeSessionId, sessions, reminders } 
-    });
+    set({ isSaving: true });
+    try {
+      const { agents, activeAgentId, activeSessionId, sessions, reminders } = get();
+      await db.state.put({ 
+        id: 'main', 
+        data: { agents, activeAgentId, activeSessionId, sessions, reminders } 
+      });
+    } finally {
+      // Small delay to prevent UI flicker on fast saves
+      setTimeout(() => set({ isSaving: false }), 400);
+    }
   },
 
   resetAll: async () => {

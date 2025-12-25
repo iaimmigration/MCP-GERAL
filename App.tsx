@@ -9,9 +9,9 @@ import { AgentConfig } from './types';
 
 const App: React.FC = () => {
   const { 
-    isHydrated, hydrate, agents, sessions, reminders,
+    isHydrated, isSaving, hydrate, agents, sessions, reminders,
     activeAgentId, activeSessionId, setActiveAgent, 
-    resetAll, saveAgent, deleteAgent 
+    resetAll, saveAgent, deleteAgent, persist 
   } = useForgeStore();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -20,6 +20,15 @@ const App: React.FC = () => {
   useEffect(() => {
     hydrate();
   }, []);
+
+  // FLUSH ON EXIT: Garante persistência ao fechar a aba
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      persist(); // Força gravação síncrona/imediata antes de sair
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [persist]);
 
   const activeAgent = useMemo(() => 
     agents.find(a => a.id === activeAgentId), 
@@ -51,7 +60,7 @@ const App: React.FC = () => {
         onGoHome={() => setActiveAgent(null)}
       />
       
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden relative">
         {showLanding ? (
           <LandingPage onGetStarted={() => { setEditingAgent(undefined); setIsEditing(true); }} />
         ) : (activeAgent && activeSession) ? (
@@ -79,6 +88,14 @@ const App: React.FC = () => {
              </div>
           </div>
         )}
+
+        {/* Persistence Status HUD */}
+        <div className="absolute bottom-4 right-8 pointer-events-none z-50">
+           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur transition-all duration-500 ${isSaving ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sincronizando DB</span>
+           </div>
+        </div>
       </main>
 
       {isEditing && (
