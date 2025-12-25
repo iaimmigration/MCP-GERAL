@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import AgentEditor from './components/AgentEditor';
@@ -9,20 +9,29 @@ import { DEFAULT_AGENTS } from './constants';
 
 const STORAGE_KEY = 'mcp_agent_forge_enterprise_v12';
 
+// Utility for safe session title generation
+const generateSessionTitle = (message: string): string => {
+  const clean = message.replace(/\[.*?\]/g, '').trim();
+  if (!clean) return 'Consulta MCP';
+  return clean.slice(0, 32) + (clean.length > 32 ? '...' : '');
+};
+
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
-    console.log("[BOOT] Inicializando leitura do LocalStorage...");
+    console.log("[BOOT] Lendo armazenamento local...");
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        console.log("[BOOT] Dados recuperados com sucesso.");
-        return parsed;
+        // Basic schema validation check
+        if (Array.isArray(parsed.agents) && Array.isArray(parsed.sessions)) {
+          console.log("[BOOT] Integridade de dados validada.");
+          return parsed;
+        }
       } catch (e) {
-        console.error("[BOOT] Erro crítico ao processar LocalStorage:", e);
+        console.error("[BOOT] Falha na validação de esquema. Resetando...");
       }
     }
-    console.log("[BOOT] Utilizando configuração padrão de fábrica.");
     return {
       agents: DEFAULT_AGENTS,
       activeAgentId: null,
@@ -34,36 +43,48 @@ const App: React.FC = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingAgent, setEditingAgent] = useState<AgentConfig | undefined>(undefined);
-  const [showLanding, setShowLanding] = useState(state.activeAgentId === null);
 
+  // PERFORMANCE: DEBOUNCED PERSISTENCE
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const handler = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }, 800);
+    return () => clearTimeout(handler);
   }, [state]);
 
-  const activeAgent = state.agents.find(a => a.id === state.activeAgentId);
-  const activeSession = state.sessions.find(s => s.id === state.activeSessionId);
+  // DERIVED STATE: REACTIVE UI
+  const activeAgent = useMemo(() => 
+    state.agents.find(a => a.id === state.activeAgentId), 
+    [state.agents, state.activeAgentId]
+  );
+  
+  const activeSession = useMemo(() => 
+    state.sessions.find(s => s.id === state.activeSessionId), 
+    [state.sessions, state.activeSessionId]
+  );
 
-  // LOGS DE DIAGNÓSTICO
+  const showLanding = state.activeAgentId === null;
+
+  // KERNEL GUARDIAN: AUTO-REPAIR SYSTEM
   useEffect(() => {
-    console.group("Forge State Monitor");
-    console.log("Agent Ativo ID:", state.activeAgentId);
-    console.log("Session Ativa ID:", state.activeSessionId);
-    console.log("Agent Localizado:", !!activeAgent);
-    console.log("Session Localizada:", !!activeSession);
-    console.log("Total Sessões:", state.sessions.length);
-    console.groupEnd();
-  }, [state.activeAgentId, state.activeSessionId, state.sessions.length]);
+    if (state.activeAgentId && !activeAgent) {
+      console.warn("[GUARDIAN] Agente órfão detectado. Redirecionando...");
+      setState(prev => ({ ...prev, activeAgentId: null, activeSessionId: null }));
+    }
+    if (state.activeSessionId && !activeSession && activeAgent) {
+      const fallback = state.sessions.find(s => s.agentId === state.activeAgentId);
+      setState(prev => ({ ...prev, activeSessionId: fallback?.id || null }));
+    }
+  }, [state.activeAgentId, activeAgent, state.activeSessionId, activeSession]);
 
   const handleSelectAgent = (id: string) => {
-    console.log(`[ACTION] Selecionando Agente: ${id}`);
     setState(prev => {
       const agentSessions = prev.sessions.filter(s => s.agentId === id);
       const existingSessionId = agentSessions.length > 0 ? agentSessions[0].id : null;
 
       if (!existingSessionId) {
-        console.log("[SYNC] Nenhuma sessão encontrada para este agente. Criando nova...");
         const newSession: ChatSession = {
-          id: `session-${Date.now()}`,
+          id: crypto.randomUUID(),
           agentId: id,
           title: 'Nova Conversa',
           messages: [],
@@ -77,20 +98,17 @@ const App: React.FC = () => {
         };
       }
 
-      console.log(`[SYNC] Vinculando à sessão existente: ${existingSessionId}`);
       return {
         ...prev,
         activeAgentId: id,
         activeSessionId: existingSessionId
       };
     });
-    setShowLanding(false);
   };
 
   const handleNewSession = (agentId: string) => {
-    console.log(`[ACTION] Iniciando nova sessão para: ${agentId}`);
     const newSession: ChatSession = {
-      id: `session-${Date.now()}`,
+      id: crypto.randomUUID(),
       agentId: agentId,
       title: 'Nova Conversa',
       messages: [],
@@ -102,11 +120,9 @@ const App: React.FC = () => {
       activeSessionId: newSession.id,
       sessions: [newSession, ...prev.sessions]
     }));
-    setShowLanding(false);
   };
 
   const handleSaveAgent = (config: AgentConfig) => {
-    console.log(`[FORGE] Comissionando Agente: ${config.name}`);
     setState(prev => {
       const existingIdx = prev.agents.findIndex(a => a.id === config.id);
       let newAgents = [...prev.agents];
@@ -119,7 +135,7 @@ const App: React.FC = () => {
 
       if (agentSessions.length === 0) {
         const newSession: ChatSession = {
-          id: `session-${Date.now()}`,
+          id: crypto.randomUUID(),
           agentId: config.id,
           title: 'Nova Conversa',
           messages: [],
@@ -141,11 +157,10 @@ const App: React.FC = () => {
     });
     setIsEditing(false);
     setEditingAgent(undefined);
-    setShowLanding(false);
   };
 
   const handleEmergencyReset = () => {
-    if (confirm("Deseja resetar a Forja? Isso apagará todos os agentes e conversas customizadas.")) {
+    if (confirm("Deseja realizar o WIPE TOTAL dos dados locais?")) {
       localStorage.removeItem(STORAGE_KEY);
       window.location.reload();
     }
@@ -160,8 +175,7 @@ const App: React.FC = () => {
           const newMessages = [...s.messages, msg];
           let title = s.title;
           if (s.messages.length === 0 || s.title === 'Nova Conversa') {
-            const raw = msg.content || (msg.attachments?.length ? 'Análise Visual' : 'Consulta MCP');
-            title = raw.slice(0, 32) + (raw.length > 32 ? '...' : '');
+            title = generateSessionTitle(msg.content || (msg.attachments?.length ? 'Análise Visual' : ''));
           }
           return { ...s, messages: newMessages, title };
         }
@@ -195,6 +209,33 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleRenameSession = (sessionId: string, title: string) => {
+    setState(prev => ({
+      ...prev,
+      sessions: prev.sessions.map(s => s.id === sessionId ? { ...s, title } : s)
+    }));
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    setState(prev => ({
+      ...prev,
+      sessions: prev.sessions.filter(s => s.id !== sessionId),
+      activeSessionId: prev.activeSessionId === sessionId ? null : prev.activeSessionId
+    }));
+  };
+
+  const handleToggleReminder = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      reminders: prev.reminders.map(r => r.id === id ? { ...r, completed: !r.completed } : r)
+    }));
+  };
+
+  const handleCreateReminder = (r: Partial<ActionReminder>) => {
+    const nr = { ...r, id: crypto.randomUUID(), completed: false, createdAt: Date.now() } as ActionReminder;
+    setState(prev => ({ ...prev, reminders: [nr, ...prev.reminders] }));
+  };
+
   return (
     <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans selection:bg-blue-500/30">
       <Sidebar 
@@ -207,10 +248,10 @@ const App: React.FC = () => {
         onSelectSession={(id) => setState(prev => ({ ...prev, activeSessionId: id }))}
         onNewAgent={() => { setEditingAgent(undefined); setIsEditing(true); }}
         onNewSession={handleNewSession}
-        onDeleteSession={(id) => setState(prev => ({ ...prev, sessions: prev.sessions.filter(s => s.id !== id) }))}
-        onRenameSession={(id, title) => setState(prev => ({ ...prev, sessions: prev.sessions.map(s => s.id === id ? {...s, title} : s) }))}
-        onGoHome={() => { setShowLanding(true); setState(prev => ({ ...prev, activeAgentId: null, activeSessionId: null })); }}
-        onToggleReminder={(id) => setState(prev => ({ ...prev, reminders: prev.reminders.map(r => r.id === id ? {...r, completed: !r.completed} : r) }))}
+        onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
+        onGoHome={() => setState(prev => ({ ...prev, activeAgentId: null, activeSessionId: null }))}
+        onToggleReminder={handleToggleReminder}
       />
       
       <main className="flex-1 flex overflow-hidden">
@@ -224,59 +265,54 @@ const App: React.FC = () => {
             onSendMessage={handleSendMessage}
             onUpdateLastMessage={handleUpdateLastMessage}
             onEditAgent={() => { setEditingAgent(activeAgent); setIsEditing(true); }}
-            onCreateReminder={(r) => {
-              const nr = { ...r, id: `t-${Date.now()}`, completed: false, createdAt: Date.now() } as ActionReminder;
-              setState(prev => ({ ...prev, reminders: [nr, ...prev.reminders] }));
-            }}
-            onToggleReminder={(id) => setState(prev => ({ ...prev, reminders: prev.reminders.map(r => r.id === id ? {...r, completed: !r.completed} : r) }))}
+            onCreateReminder={handleCreateReminder}
+            onToggleReminder={handleToggleReminder}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-10">
-             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 space-y-8 shadow-2xl">
+             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 space-y-8 shadow-2xl animate-in zoom-in-95 duration-500">
                 <div className="flex flex-col items-center gap-6">
                    <div className="relative">
                       <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
                       <div className="absolute inset-0 flex items-center justify-center text-xs font-black text-blue-400">MCP</div>
                    </div>
                    <div className="text-center">
-                     <h2 className="text-white font-black uppercase tracking-widest text-sm">Diagnóstico de Kernel</h2>
-                     <p className="text-slate-500 text-[10px] mt-2 font-mono">Sincronização em curso...</p>
+                     <h2 className="text-white font-black uppercase tracking-widest text-sm">Integridade de Kernel</h2>
+                     <p className="text-slate-500 text-[10px] mt-2 font-mono">Validando checkpoints de persistência...</p>
                    </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 bg-slate-950/50 p-6 rounded-3xl border border-slate-800">
                    <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span className="text-slate-500">Agente Ativo:</span>
-                      <span className={state.activeAgentId ? "text-emerald-400" : "text-red-400"}>{state.activeAgentId ? "OK" : "PENDENTE"}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span className="text-slate-500">Agente Localizado:</span>
-                      <span className={activeAgent ? "text-emerald-400" : "text-red-400"}>{activeAgent ? "OK" : "ERRO"}</span>
+                      <span className="text-slate-500">Status do Agente:</span>
+                      <span className={activeAgent ? "text-emerald-400" : "text-amber-400"}>
+                        {activeAgent ? "VÁLIDO" : "NULO/AGUARDANDO"}
+                      </span>
                    </div>
                    <div className="flex justify-between items-center text-[10px] font-black uppercase">
                       <span className="text-slate-500">Sessão Ativa:</span>
-                      <span className={state.activeSessionId ? "text-emerald-400" : "text-red-400"}>{state.activeSessionId ? "OK" : "PENDENTE"}</span>
+                      <span className={activeSession ? "text-emerald-400" : "text-red-400"}>
+                        {activeSession ? "OK" : "PENDENTE"}
+                      </span>
                    </div>
                    <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span className="text-slate-500">Integridade DB:</span>
-                      <span className="text-emerald-400">ESTÁVEL</span>
+                      <span className="text-slate-500">Data Schema:</span>
+                      <span className="text-emerald-400 font-mono">V12_VALID</span>
                    </div>
                 </div>
 
                 <div className="pt-4 flex flex-col gap-3">
                    <button 
-                     onClick={() => {
-                        if (state.activeAgentId) handleSelectAgent(state.activeAgentId);
-                     }}
+                     onClick={() => setState(prev => ({ ...prev, activeAgentId: null, activeSessionId: null }))}
                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
                    >
-                     Tentar Forçar Sincronia
+                     Redirecionar para Painel Central
                    </button>
                    <button 
                      onClick={handleEmergencyReset}
-                     className="w-full py-3 bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-700 hover:border-red-900/50"
+                     className="w-full py-3 bg-slate-800 hover:bg-red-900/40 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-700"
                    >
-                     Reset de Emergência (Wipe)
+                     Reset de Emergência (Limpar Storage)
                    </button>
                 </div>
              </div>
@@ -298,7 +334,6 @@ const App: React.FC = () => {
               activeAgentId: null,
               activeSessionId: null
             }));
-            setShowLanding(true);
             setIsEditing(false);
           }}
         />

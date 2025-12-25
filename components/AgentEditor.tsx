@@ -12,7 +12,7 @@ interface AgentEditorProps {
 
 const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCancel, onDelete }) => {
   const [config, setConfig] = useState<AgentConfig>(initialConfig || {
-    id: `agent-${Date.now()}`,
+    id: crypto.randomUUID(),
     name: '',
     description: '',
     systemInstruction: '',
