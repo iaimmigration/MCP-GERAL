@@ -1,0 +1,9 @@
+{
+  "name": "MCP Agent Forge",
+  "description": "A powerful multi-purpose agent configurator using Model Context Protocol (MCP) concepts. Design, configure, and chat with custom AI agents equipped with specialized tools like Google Search and Maps.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
