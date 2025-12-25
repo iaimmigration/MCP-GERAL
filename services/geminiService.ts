@@ -8,7 +8,7 @@ export const executeAgentActionStream = async (
   history: ChatMessage[],
   attachments: MessageAttachment[] = [],
   onChunk: (text: string, grounding?: { uri: string; title: string }[], thought?: string, images?: string[]) => void,
-  // Added 'success' to the allowed log levels to fix type errors
+  // Fixed type error by including 'success' in log levels
   onLog?: (message: string, level: 'debug' | 'info' | 'warn' | 'error' | 'success') => void
 ): Promise<void> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -77,7 +77,8 @@ export const executeAgentActionStream = async (
     temperature: agent.temperature ?? 0.7,
   };
 
-  if (agent.thinkingBudget) {
+  // Correctly apply thinkingBudget based on Gemini 3 guidelines
+  if (agent.thinkingBudget !== undefined && agent.thinkingBudget > 0) {
     config.thinkingConfig = { thinkingBudget: agent.thinkingBudget };
     onLog?.(`Budget de reflexão configurado: ${agent.thinkingBudget} tokens.`, 'debug');
   }
@@ -93,41 +94,55 @@ export const executeAgentActionStream = async (
     let fullText = "";
     let fullThought = "";
     let chunkCount = 0;
+    const accumulatedGrounding: { uri: string; title: string }[] = [];
 
     for await (const chunk of responseStream) {
       chunkCount++;
+      // Correct property access for text
       const textChunk = chunk.text;
       if (textChunk) {
         fullText += textChunk;
         if (chunkCount === 1) onLog?.("Primeiro chunk de resposta recebido.", 'success');
       }
       
+      // Extraction of thought parts if available
       const thoughtPart = (chunk as any).candidates?.[0]?.content?.parts?.find((p: any) => p.thought)?.thought;
       if (thoughtPart) {
         fullThought += thoughtPart;
         onLog?.("Reflexão (Thought) detectada no stream.", 'debug');
       }
 
+      // Handling Grounding Metadata during stream
       const metadata = chunk.candidates?.[0]?.groundingMetadata;
-      let groundingUrls: { uri: string; title: string }[] = [];
       if (metadata?.groundingChunks) {
         metadata.groundingChunks.forEach((c: any) => {
           if (c.web) {
-            groundingUrls.push({ uri: c.web.uri, title: c.web.title });
-            onLog?.(`Grounding detectado: ${c.web.title}`, 'debug');
+            const exists = accumulatedGrounding.some(g => g.uri === c.web.uri);
+            if (!exists) {
+              accumulatedGrounding.push({ uri: c.web.uri, title: c.web.title });
+              onLog?.(`Grounding detectado: ${c.web.title}`, 'debug');
+            }
           }
           if (c.maps) {
-            groundingUrls.push({ uri: c.maps.uri, title: c.maps.title });
-            onLog?.(`Localização identificada via Maps.`, 'debug');
+            const exists = accumulatedGrounding.some(g => g.uri === c.maps.uri);
+            if (!exists) {
+              accumulatedGrounding.push({ uri: c.maps.uri, title: c.maps.title });
+              onLog?.(`Localização identificada via Maps.`, 'debug');
+            }
           }
         });
       }
 
-      onChunk(fullText, groundingUrls.length > 0 ? groundingUrls : undefined, fullThought || undefined);
+      onChunk(
+        fullText, 
+        accumulatedGrounding.length > 0 ? [...accumulatedGrounding] : undefined, 
+        fullThought || undefined
+      );
     }
 
     onLog?.(`Stream finalizado com sucesso. Chunks totais: ${chunkCount}`, 'success');
 
+    // Check for explicit image generation triggers
     if (agent.tools.includes(ToolType.IMAGE_GEN) && (fullText.toLowerCase().includes("gerar imagem") || fullText.toLowerCase().includes("desenhe"))) {
       onLog?.("Detectada solicitação de geração de imagem. Ativando engine secundária (Gemini 2.5 Flash Image).", 'info');
       const imgResponse = await ai.models.generateContent({
@@ -143,7 +158,13 @@ export const executeAgentActionStream = async (
         }
       }
       onLog?.(`${generatedImages.length} imagens geradas com sucesso.`, 'success');
-      onChunk(fullText, undefined, fullThought, generatedImages);
+      // Pass accumulated grounding to maintain context
+      onChunk(
+        fullText, 
+        accumulatedGrounding.length > 0 ? [...accumulatedGrounding] : undefined, 
+        fullThought, 
+        generatedImages
+      );
     }
 
   } catch (error: any) {
