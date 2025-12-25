@@ -40,10 +40,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome }) => {
         className="p-6 border-b border-slate-800 cursor-pointer hover:bg-slate-800/30 transition-colors group shrink-0"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:rotate-12 transition-transform">⚒️</div>
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:rotate-12 transition-transform">🤖</div>
           <div>
-            <h1 className="text-lg font-black text-white leading-none tracking-tight">Agent Forge</h1>
-            <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-black">Industrial UI v2.1</p>
+            <h1 className="text-lg font-black text-white leading-none tracking-tight">Oficina MCP</h1>
+            <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-black">Sua Equipe de Robôs</p>
           </div>
         </div>
       </div>
@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome }) => {
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="p-4 space-y-4">
           <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] px-2 flex items-center justify-between">
-            <span>Operational Units</span>
+            <span>Meus Robôs MCP</span>
             <span className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">{agents.length}</span>
           </div>
           <div className="space-y-1">
@@ -74,7 +74,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome }) => {
 
         {activeAgentId && activeAgentReminders.length > 0 && (
           <div className="p-4 pt-0 space-y-4">
-             <div className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] px-2">Active Directives</div>
+             <div className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] px-2">Agenda do Robô</div>
              <div className="space-y-2 px-1">
                 {activeAgentReminders.slice(0, 3).map(reminder => (
                   <div key={reminder.id} className="p-3 bg-slate-950/40 border border-slate-800 rounded-xl flex items-start gap-3">
@@ -89,8 +89,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome }) => {
         {activeAgentId && (
           <div className="p-4 pt-0 space-y-4">
             <div className="flex items-center justify-between px-2">
-              <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Deployments</div>
-              <button onClick={() => createSession(activeAgentId)} className="text-[9px] bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-400 px-2 py-1 rounded-md transition-all font-black">+ NEW</button>
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Conversas</div>
+              <button onClick={() => createSession(activeAgentId)} className="text-[9px] bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-400 px-2 py-1 rounded-md transition-all font-black">+ NOVA</button>
             </div>
             <div className="space-y-1">
               {activeAgentSessions.map((session) => (
@@ -120,7 +120,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome }) => {
       </div>
 
       <div className="p-4 border-t border-slate-800 bg-slate-900/50 shrink-0">
-        <button onClick={onNewAgent} className="w-full p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-black text-[11px] uppercase tracking-widest shadow-lg shadow-blue-500/20">Commission New Unit</button>
+        <button onClick={onNewAgent} className="w-full p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-black text-[11px] uppercase tracking-widest shadow-lg shadow-blue-500/20">Criar Robô MCP</button>
       </div>
     </div>
   );

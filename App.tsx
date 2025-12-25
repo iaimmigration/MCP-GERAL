@@ -47,7 +47,7 @@ const App: React.FC = () => {
       <div className="flex h-screen items-center justify-center bg-slate-950">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Initializing Forge Kernel...</span>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Iniciando Núcleo MCP...</span>
         </div>
       </div>
     );
@@ -75,11 +75,11 @@ const App: React.FC = () => {
                 <div className="text-center space-y-4">
                    <div className="text-4xl">⚠️</div>
                    <h2 className="text-white font-black uppercase tracking-widest text-sm">FALHA DE SINCRONIA</h2>
-                   <p className="text-slate-500 text-xs">O kernel detectou uma inconsistência no agente selecionado ou sessão ativa.</p>
+                   <p className="text-slate-500 text-xs">O núcleo MCP detectou uma inconsistência no robô selecionado ou na sessão ativa.</p>
                 </div>
                 <div className="pt-4 flex flex-col gap-3">
                    <button onClick={() => setActiveAgent(null)} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase transition-all">
-                     Voltar ao Centro de Controle
+                     Voltar ao Centro de Comando
                    </button>
                    <button onClick={resetAll} className="w-full py-3 bg-slate-800 hover:bg-red-900/40 text-slate-400 rounded-2xl text-[10px] font-black uppercase transition-all border border-slate-700">
                      Reset de Emergência (WIPE)
@@ -93,7 +93,7 @@ const App: React.FC = () => {
         <div className="absolute bottom-4 right-8 pointer-events-none z-50">
            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur transition-all duration-500 ${isSaving ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sincronizando DB</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sincronizando Banco MCP</span>
            </div>
         </div>
       </main>

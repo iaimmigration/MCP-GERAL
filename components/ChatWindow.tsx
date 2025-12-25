@@ -30,7 +30,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isTyping]);
 
-  // TRIGGER: Smart Titling após 3 mensagens
   useEffect(() => {
     if (messages.length === 3 && activeSessionId) {
       const triggerTitling = async () => {
@@ -59,7 +58,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
         return;
       }
 
-      // Gemini TTS returns raw PCM data which needs manual decoding
       const audioBuffer = await decodeAudioData(
         decodeBase64(base64),
         ctx,
@@ -73,7 +71,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
       source.onended = () => setIsPlayingAudio(null);
       source.start();
     } catch (e) {
-      console.error("Speech playback error:", e);
+      console.error("Erro na reprodução de voz:", e);
       setIsPlayingAudio(null);
     }
   };
@@ -132,7 +130,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
     } catch (error) {
       updateLastMessage(activeSessionId, { 
         role: 'model', 
-        content: "Falha crítica no núcleo de processamento.", 
+        content: "Ocorreu um erro ao processar sua solicitação. Verifique sua conexão.", 
         timestamp: Date.now() 
       });
     } finally {
@@ -168,14 +166,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
               {isTyping && <span className="flex gap-1 animate-pulse"><span className="w-1 h-1 bg-blue-500 rounded-full"></span></span>}
             </h2>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 font-black text-blue-400 uppercase tracking-tighter">{agent.model}</span>
-              <button onClick={() => setShowTaskLedger(!showTaskLedger)} className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase transition-all ${showTaskLedger ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'}`}>Ledger {agentReminders.filter(r => !r.completed).length > 0 && `[${agentReminders.filter(r => !r.completed).length}]`}</button>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 font-black text-blue-400 uppercase tracking-tighter">Ativo</span>
+              <button onClick={() => setShowTaskLedger(!showTaskLedger)} className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase transition-all ${showTaskLedger ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700 hover:text-slate-300'}`}>Tarefas {agentReminders.filter(r => !r.completed).length > 0 && `[${agentReminders.filter(r => !r.completed).length}]`}</button>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
-           {agent.name.toLowerCase().includes('inspector') && (
-             <button onClick={startUsabilitySimulation} disabled={isSimulating} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">Audit Mode</button>
+           {agent.name.toLowerCase().includes('auditor') && (
+             <button onClick={startUsabilitySimulation} disabled={isSimulating} className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">Modo Auditoria</button>
            )}
            <button onClick={onEditAgent} className="p-3 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all border border-slate-800"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg></button>
         </div>
@@ -191,6 +189,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
                   <button 
                     onClick={() => handleSpeech(msg.content, `msg-${i}`)}
                     className={`absolute -left-12 top-0 p-2 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all opacity-0 group-hover:opacity-100 ${isPlayingAudio === `msg-${i}` ? 'text-blue-400 border-blue-500/50 opacity-100' : ''}`}
+                    title="Ouvir Resposta"
                   >
                     {isPlayingAudio === `msg-${i}` ? (
                       <div className="flex gap-0.5 items-end h-4 w-4">
@@ -205,19 +204,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
                 )}
 
                 {msg.role === 'model' && msg.thought && (
-                  <div className="mb-4 p-4 bg-slate-950/50 border border-indigo-500/20 rounded-2xl text-[12px] font-mono text-indigo-300/60 leading-relaxed">{msg.thought}</div>
+                  <div className="mb-4 p-4 bg-slate-950/50 border border-indigo-500/20 rounded-2xl text-[12px] font-mono text-indigo-300/60 leading-relaxed">
+                    <div className="text-[9px] font-black uppercase mb-1 tracking-widest opacity-50">Raciocínio Interno</div>
+                    {msg.thought}
+                  </div>
                 )}
                 <div 
                   className="prose prose-invert max-w-none text-[15px] leading-relaxed whitespace-pre-wrap font-medium text-slate-200"
                   dangerouslySetInnerHTML={{ __html: sanitizeContent(msg.content) }}
                 />
                 {msg.generatedImages && msg.generatedImages.map((img, idx) => (
-                  <img key={idx} src={img} className="mt-6 rounded-3xl border border-white/5 shadow-2xl" alt="Forge Output" />
+                  <img key={idx} src={img} className="mt-6 rounded-3xl border border-white/5 shadow-2xl" alt="Imagem Gerada" />
                 ))}
                 {msg.groundingUrls && (
                   <div className="mt-8 pt-6 border-t border-slate-800/50 flex flex-wrap gap-2">
+                    <div className="w-full text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Fontes Consultadas:</div>
                     {msg.groundingUrls.map((url, idx) => (
-                      <a key={idx} href={url.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-950/50 border border-slate-800 rounded-xl text-[10px] font-black text-slate-500 hover:text-blue-400 transition-all uppercase tracking-tight">{url.title || "External Intelligence"}</a>
+                      <a key={idx} href={url.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-slate-950/50 border border-slate-800 rounded-xl text-[10px] font-black text-slate-500 hover:text-blue-400 transition-all uppercase tracking-tight">{url.title || "Link Externo"}</a>
                     ))}
                   </div>
                 )}
@@ -229,7 +232,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
         {showTaskLedger && (
           <div className="absolute top-4 right-4 w-96 max-h-[80%] bg-slate-900/95 backdrop-blur-2xl border border-slate-800 rounded-[2.5rem] shadow-2xl p-8 flex flex-col z-40 animate-in slide-in-from-right-10">
              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-sm font-black text-white uppercase tracking-widest">Active Directives</h3>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">Lista de Tarefas</h3>
                 <button onClick={() => setShowTaskLedger(false)} className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400">✕</button>
              </div>
              <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar">
@@ -240,13 +243,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
                       <div className="flex-1">
                         <div className={`text-sm font-bold ${reminder.completed ? 'line-through text-slate-600' : 'text-slate-200'}`}>{reminder.title}</div>
                         <div className="flex items-center gap-3 mt-3">
-                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${reminder.priority === 'high' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>{reminder.priority}</span>
+                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${reminder.priority === 'high' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>{reminder.priority === 'high' ? 'Urgente' : 'Normal'}</span>
                            <span className="text-[10px] text-slate-500 font-mono">{new Date(reminder.dueDate).toLocaleDateString()}</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
+                {agentReminders.length === 0 && (
+                  <div className="text-center py-20 text-slate-500 text-xs uppercase tracking-widest">Nenhuma tarefa registrada</div>
+                )}
              </div>
           </div>
         )}
@@ -254,8 +260,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
 
       <div className="p-8 bg-slate-950 border-t border-slate-800">
         <form onSubmit={handleSubmit} className="max-w-5xl mx-auto flex items-center gap-4 bg-slate-900 border border-slate-800 rounded-[2rem] p-3 pl-6 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Transmita comandos para ${agent.name}...`} className="flex-1 bg-transparent text-slate-100 py-3 focus:outline-none placeholder:text-slate-600 font-medium" disabled={isTyping || isSimulating}/>
-          <button type="submit" disabled={isTyping || isSimulating} className={`px-8 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all ${isTyping || isSimulating ? 'bg-slate-800 text-slate-600' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg active:scale-95'}`}>{isTyping ? 'OPERANDO' : 'Executar'}</button>
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Escreva sua mensagem para ${agent.name}...`} className="flex-1 bg-transparent text-slate-100 py-3 focus:outline-none placeholder:text-slate-600 font-medium" disabled={isTyping || isSimulating}/>
+          <button type="submit" disabled={isTyping || isSimulating} className={`px-8 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all ${isTyping || isSimulating ? 'bg-slate-800 text-slate-600' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg active:scale-95'}`}>{isTyping ? 'AGUARDE' : 'ENVIAR'}</button>
         </form>
       </div>
     </div>

@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-// Use default import for Dexie to resolve type issues with .version() method
+// Using Dexie with a default import and moving versioning outside the constructor to ensure correct typing of the version method
 import Dexie, { type EntityTable } from 'dexie';
 import { z } from 'zod';
 import { AgentConfig, ChatSession, AppState, ActionReminder, ChatMessage } from './types';
@@ -12,14 +12,16 @@ class ForgeDatabase extends Dexie {
 
   constructor() {
     super('ForgeEnterpriseDB');
-    // Initialize versioning and stores for Dexie
-    this.version(1).stores({
-      state: 'id'
-    });
   }
 }
 
 const db = new ForgeDatabase();
+
+// Define versioning on the instance to fix 'Property version does not exist on type ForgeDatabase'
+// This follows Dexie best practices for TypeScript when extending the base class.
+db.version(1).stores({
+  state: 'id'
+});
 
 // --- SCHEMA VALIDATION (Zod) ---
 const AppStateSchema = z.object({

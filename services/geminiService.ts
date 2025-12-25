@@ -54,15 +54,19 @@ export const executeAgentActionStream = async (
 
   onLog?.(`Iniciando kernel para agente: ${agent.name} (Modelo: ${effectiveModel})`, 'info');
   
-  if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) {
-    tools.push({ googleSearch: {} });
-    onLog?.("Módulo Google Search ativado.", 'debug');
-  }
-
+  // Apply grounding tool restrictions based on API guidelines.
+  // Rule: googleMaps may be used with googleSearch, but not with any other tools.
+  // Rule: Only tools: googleSearch is permitted. Do not use it with other tools.
   if (hasMaps) {
-    // googleMaps can only be used with googleSearch, not other tools like code interpreter.
+    if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) {
+      tools.push({ googleSearch: {} });
+      onLog?.("Módulo Google Search ativado (em conjunto com Maps).", 'debug');
+    }
     tools.push({ googleMaps: {} });
     onLog?.("Módulo Google Maps ativado.", 'debug');
+  } else if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) {
+    tools.push({ googleSearch: {} });
+    onLog?.("Módulo Google Search ativado.", 'debug');
   } else if (agent.tools.includes(ToolType.CODE_INTERPRETER)) {
     tools.push({ codeExecution: {} });
     onLog?.("Sandbox de execução de código ativada.", 'debug');
@@ -137,6 +141,7 @@ export const executeAgentActionStream = async (
 
     for await (const chunk of responseStream) {
       chunkCount++;
+      // The text property is a getter, do not call it as a function.
       const textChunk = chunk.text;
       if (textChunk) {
         fullText += textChunk;
@@ -184,9 +189,12 @@ export const executeAgentActionStream = async (
       });
       
       let generatedImages: string[] = [];
-      for (const part of imgResponse.candidates[0].content.parts) {
-        if (part.inlineData) {
-          generatedImages.push(`data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`);
+      const parts = imgResponse.candidates?.[0]?.content?.parts;
+      if (parts) {
+        for (const part of parts) {
+          if (part.inlineData) {
+            generatedImages.push(`data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`);
+          }
         }
       }
       onChunk(fullText, accumulatedGrounding, fullThought, generatedImages);
@@ -212,6 +220,7 @@ export const generateSmartTitle = async (messages: ChatMessage[]): Promise<strin
         }] 
       }]
     });
+    // Use the .text property directly.
     return response.text?.trim() || "Nova Conversa";
   } catch (e) {
     return "Conversa MCP";
