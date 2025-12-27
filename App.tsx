@@ -13,7 +13,7 @@ import { AgentConfig } from './types';
 
 const App: React.FC = () => {
   const { 
-    isHydrated, isSaving, isCheckoutOpen, hydrate, agents, sessions,
+    isHydrated, isSaving, isCloudSyncing, isCheckoutOpen, hydrate, agents, sessions,
     activeAgentId, activeSessionId, setActiveAgent, setActiveSession,
     resetAll, saveAgent, deleteAgent, createSession, persist 
   } = useForgeStore();
@@ -123,10 +123,14 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="absolute bottom-4 right-8 pointer-events-none z-50">
+        <div className="absolute bottom-4 right-8 pointer-events-none z-50 flex flex-col items-end gap-2">
            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur transition-all duration-500 ${isSaving ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sincronizando Banco MCP</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Local Sync</span>
+           </div>
+           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-900/40 border border-blue-500/20 backdrop-blur transition-all duration-500 ${isCloudSyncing ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-ping"></div>
+              <span className="text-[9px] font-black text-blue-300 uppercase tracking-widest">Supabase Cloud Sync</span>
            </div>
         </div>
       </main>

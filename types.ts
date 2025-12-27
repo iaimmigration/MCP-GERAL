@@ -9,6 +9,22 @@ export enum ToolType {
   CHROME_BROWSER = 'chromeBrowser'
 }
 
+export interface AgentVariable {
+  key: string;
+  value: string;
+  label: string;
+}
+
+export interface TaskResult {
+  id: string;
+  client_id: string;
+  agent_id: string;
+  task_name: string;
+  folder_path: string;
+  payload: any;
+  created_at: number;
+}
+
 export interface MessageAttachment {
   mimeType: string;
   data: string; // Base64 encoded data
@@ -18,7 +34,7 @@ export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
   timestamp: number;
-  engine?: 'eden' | 'gemini'; // Identificador do motor que gerou a resposta
+  engine?: 'eden' | 'gemini';
   groundingUrls?: { uri: string; title: string }[];
   thought?: string; 
   generatedImages?: string[];
@@ -38,7 +54,8 @@ export interface AppState {
   reminders: ActionReminder[];
   tokenBalance: number;
   totalTokensConsumed: number;
-  engineStatus: 'healthy' | 'fallback' | 'offline'; // Status da redundância
+  engineStatus: 'healthy' | 'fallback' | 'offline';
+  clientId: string; // ID único desta instalação/cliente
 }
 
 export interface AgentConfig {
@@ -47,12 +64,14 @@ export interface AgentConfig {
   description: string;
   systemInstruction: string;
   knowledgeBase?: string;
+  defaultFolder?: string; // Pasta raiz para resultados deste agente
   tools: ToolType[];
   toolConfigs: ToolConfig[];
   routines: AgentRoutine[];
   model: string;
   icon: string;
   temperature?: number;
+  variables?: AgentVariable[]; 
 }
 
 export interface ChatSession {

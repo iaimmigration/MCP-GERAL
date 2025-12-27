@@ -1,8 +1,16 @@
 
 import { create } from 'zustand';
 import { Dexie, type EntityTable } from 'dexie';
-import { AgentConfig, ChatSession, AppState, ChatMessage } from './types';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult } from './types';
 import { DEFAULT_AGENTS } from './constants';
+
+const supabaseUrl = 'https://udffqkgeiuatdkckjfhu.supabase.co';
+const supabaseKey = 'sb_publishable_AObeZqTHVo5YcohbdehXrA_pl50Tr6U';
+
+const supabase: SupabaseClient | null = (supabaseUrl && supabaseKey) 
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
 
 class ForgeDatabase extends Dexie {
   state!: EntityTable<{ id: string; data: any }, 'id'>;
@@ -21,8 +29,11 @@ const mapAgents = (agentsArray: AgentConfig[]): Record<string, AgentConfig> => {
 interface ForgeStore extends AppState {
   isHydrated: boolean;
   isSaving: boolean;
+  isCloudSyncing: boolean;
+  isCloudConnected: boolean;
   isCheckoutOpen: boolean;
-  isTestMode: boolean; // Flag para ignorar restrições de tokens
+  isTestMode: boolean;
+  taskResults: TaskResult[];
   hydrate: () => Promise<void>;
   setCheckoutOpen: (open: boolean) => void;
   setActiveAgent: (id: string | null) => void;
@@ -34,6 +45,8 @@ interface ForgeStore extends AppState {
   saveAgent: (agent: AgentConfig) => void;
   deleteAgent: (id: string) => void;
   createSession: (agentId: string) => string;
+  saveTaskResult: (agentId: string, taskName: string, folder: string, payload: any) => Promise<void>;
+  fetchTaskResults: (agentId: string) => Promise<void>;
   persist: () => Promise<void>;
   resetAll: () => Promise<void>;
   renameSession: (id: string, title: string) => void;
@@ -46,42 +59,109 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   activeSessionId: null,
   sessions: [],
   reminders: [],
-  tokenBalance: 30000, // Saldo inicial Trial atualizado para 30k
+  tokenBalance: 30000,
   totalTokensConsumed: 0,
   isHydrated: false,
   isSaving: false,
+  isCloudSyncing: false,
+  isCloudConnected: false,
   isCheckoutOpen: false,
   isTestMode: false,
+  engineStatus: 'healthy',
+  clientId: 'client-' + crypto.randomUUID().slice(0, 8),
+  taskResults: [],
 
   hydrate: async () => {
-    // Verificar se estamos em modo de teste via URL antes da hidratação
     const isTestUrl = new URLSearchParams(window.location.search).get('mode') === 'test';
-    
     const saved = await db.state.get('main');
-    if (saved) {
-      let agentsData = saved.data.agents;
-      if (Array.isArray(agentsData)) {
-        agentsData = mapAgents(agentsData);
+    let localData = saved ? saved.data : {};
+    
+    let cloudAgents: Record<string, AgentConfig> = {};
+    let cloudIsUp = false;
+
+    if (supabase) {
+      try {
+        const { data: allAgents, error } = await supabase
+          .from('mcp_agents')
+          .select('*')
+          .order('updated_at', { ascending: false });
+
+        if (!error && allAgents) {
+          cloudIsUp = true;
+          allAgents.forEach(row => {
+            cloudAgents[row.id] = row.config;
+          });
+        }
+      } catch (e) {}
+    }
+
+    let agentsData = localData.agents || DEFAULT_AGENTS;
+    if (Array.isArray(agentsData)) {
+      agentsData = mapAgents(agentsData);
+    }
+
+    const mergedAgents = { ...agentsData, ...cloudAgents };
+
+    set({ 
+      ...localData,
+      clientId: localData.clientId || get().clientId,
+      agents: mergedAgents, 
+      isHydrated: true, 
+      isCloudConnected: cloudIsUp,
+      isTestMode: isTestUrl || localData.isTestMode || false 
+    });
+  },
+
+  saveTaskResult: async (agentId, taskName, folder, payload) => {
+    const clientId = get().clientId;
+    set({ isCloudSyncing: true });
+    
+    if (supabase) {
+      try {
+        await supabase.from('task_results').insert({
+          client_id: clientId,
+          agent_id: agentId,
+          task_name: taskName,
+          folder_path: folder,
+          payload: payload
+        });
+        set({ isCloudConnected: true });
+        // Recarregar resultados locais
+        get().fetchTaskResults(agentId);
+      } catch (e) {
+        set({ isCloudConnected: false });
       }
-      set({ 
-        ...saved.data, 
-        agents: agentsData, 
-        isHydrated: true, 
-        isTestMode: isTestUrl || saved.data.isTestMode || false 
-      });
-    } else {
-      set({ isHydrated: true, isTestMode: isTestUrl });
+    }
+    set({ isCloudSyncing: false });
+  },
+
+  fetchTaskResults: async (agentId) => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from('task_results')
+      .select('*')
+      .eq('client_id', get().clientId)
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false });
+    
+    if (!error && data) {
+      set({ taskResults: data.map(d => ({
+        id: d.id,
+        client_id: d.client_id,
+        agent_id: d.agent_id,
+        task_name: d.task_name,
+        folder_path: d.folder_path,
+        payload: d.payload,
+        created_at: new Date(d.created_at).getTime()
+      })) });
     }
   },
 
   enableTestMode: () => set({ isTestMode: true }),
-
   setCheckoutOpen: (open) => set({ isCheckoutOpen: open }),
 
   consumeTokens: (amount) => {
-    // Se estiver em modo de teste, não subtrai saldo nem aumenta consumo total
     if (get().isTestMode) return;
-
     set(state => ({
       tokenBalance: Math.max(0, state.tokenBalance - amount),
       totalTokensConsumed: state.totalTokensConsumed + amount
@@ -99,6 +179,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
 
   setActiveAgent: (id) => {
     const state = get();
+    if (id) get().fetchTaskResults(id);
     const firstSessionForAgent = state.sessions.find(s => s.agentId === id);
     set({ 
       activeAgentId: id, 
@@ -146,24 +227,47 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     get().persist();
   },
 
-  saveAgent: (agent) => {
+  saveAgent: async (agent) => {
+    set({ isCloudSyncing: true });
+    if (supabase) {
+      try {
+        await supabase.from('mcp_agents').upsert({
+          id: agent.id,
+          config: agent,
+          updated_at: new Date().toISOString(),
+          is_test_mode: get().isTestMode
+        });
+        set({ isCloudConnected: true });
+      } catch (e) {
+        set({ isCloudConnected: false });
+      }
+    }
     set(state => ({
-      agents: {
-        ...state.agents,
-        [agent.id]: agent
-      },
-      activeAgentId: agent.id
+      agents: { ...state.agents, [agent.id]: agent },
+      activeAgentId: agent.id,
+      isCloudSyncing: false
     }));
     get().persist();
   },
 
-  deleteAgent: (id) => set(state => {
-    const { [id]: _, ...remainingAgents } = state.agents;
-    return { 
-      agents: remainingAgents, 
-      activeAgentId: state.activeAgentId === id ? null : state.activeAgentId 
-    };
-  }),
+  deleteAgent: async (id) => {
+    set({ isCloudSyncing: true });
+    if (supabase) {
+      try {
+        await supabase.from('mcp_agents').delete().eq('id', id);
+        await supabase.from('task_results').delete().eq('agent_id', id);
+      } catch (e) {}
+    }
+    set(state => {
+      const { [id]: _, ...remainingAgents } = state.agents;
+      return { 
+        agents: remainingAgents, 
+        activeAgentId: state.activeAgentId === id ? null : state.activeAgentId,
+        isCloudSyncing: false
+      };
+    });
+    get().persist();
+  },
 
   renameSession: (id, title) => set(state => ({ 
     sessions: state.sessions.map(s => s.id === id ? { ...s, title } : s) 
@@ -171,13 +275,22 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
 
   persist: async () => {
     set({ isSaving: true });
-    const { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode } = get();
+    const { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode, clientId } = get();
     await db.state.put({ 
       id: 'main', 
-      data: { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode } 
+      data: { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode, clientId } 
     });
     setTimeout(() => set({ isSaving: false }), 300);
   },
 
-  resetAll: async () => { await db.state.clear(); window.location.reload(); }
+  resetAll: async () => { 
+    if (confirm("Reset total?")) {
+      if (supabase) {
+        await supabase.from('mcp_agents').delete().neq('id', 'void');
+        await supabase.from('task_results').delete().neq('id', 'void');
+      }
+      await db.state.clear(); 
+      window.location.reload(); 
+    }
+  }
 }));

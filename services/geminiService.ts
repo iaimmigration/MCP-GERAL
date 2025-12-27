@@ -37,14 +37,22 @@ export const executeAgentActionStream = async (
   let effectiveModel = agent.model;
   const tools: any[] = [];
   
-  // Refatoração Document Reader: Processamento assíncrono se houver anexo grande
+  // Substituição de Variáveis na Instrução do Sistema
+  let finalInstruction = agent.systemInstruction;
+  if (agent.variables && agent.variables.length > 0) {
+    agent.variables.forEach(v => {
+      // Fix for line 44: replaceAll might not be available in target environment. Using split/join instead.
+      finalInstruction = finalInstruction.split(v.key).join(v.value);
+    });
+  }
+
   let documentPromptAddition = "";
   const processedAttachments = [...attachments];
 
   if (agent.tools.includes(ToolType.DOCUMENT_READER) && attachments.length > 0) {
     onLog?.("Processando documentos de forma eficiente...", "info");
     for (const att of attachments) {
-      if (att.data.length > 100000) { // Se maior que 100kb
+      if (att.data.length > 100000) {
         const chunks = await processDocumentAsync(att.data, att.mimeType);
         documentPromptAddition += getSmartDocumentPrompt(chunks, 1);
         onLog?.(`Documento paginado: ${chunks.length} partes detectadas.`, "success");
@@ -80,7 +88,7 @@ export const executeAgentActionStream = async (
       model: effectiveModel,
       contents: contents,
       config: {
-        systemInstruction: agent.systemInstruction + (agent.knowledgeBase ? `\n\nBase: ${agent.knowledgeBase}` : ""),
+        systemInstruction: finalInstruction + (agent.knowledgeBase ? `\n\nBase: ${agent.knowledgeBase}` : ""),
         tools: tools.length > 0 ? tools : undefined,
         temperature: agent.temperature || 0.1,
         toolConfig: location ? { retrievalConfig: { latLng: { latitude: location.latitude, longitude: location.longitude } } } : undefined
@@ -112,7 +120,11 @@ export const runAgentDiagnostics = async (agent: AgentConfig, onStep: (step: str
     await new Promise(r => setTimeout(r, 1000));
     onStep('EDEN_CONNECTIVITY', 'error', 'Eden fora de linha.');
     onStep('API_HANDSHAKE', 'loading', 'Validando Gemini Handshake...');
-    const testResp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: 'ping', config: { maxOutputTokens: 5 } });
+    // Fix: Removing maxOutputTokens or ensuring thinkingBudget is set. Preferring removal for simple diagnostics.
+    const testResp = await ai.models.generateContent({ 
+      model: 'gemini-3-flash-preview', 
+      contents: 'ping' 
+    });
     if (!testResp.text) throw new Error("Offline");
     onStep('API_HANDSHAKE', 'success', 'Gemini Ativo.');
     return true;
