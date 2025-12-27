@@ -5,27 +5,40 @@ export enum ToolType {
   CALCULATOR = 'calculator',
   CODE_INTERPRETER = 'codeInterpreter',
   IMAGE_GEN = 'imageGeneration',
-  DOCUMENT_READER = 'documentReader'
+  DOCUMENT_READER = 'documentReader',
+  CHROME_BROWSER = 'chromeBrowser'
 }
 
-export type Priority = 'low' | 'medium' | 'high';
-
-export interface ActionReminder {
-  id: string;
-  agentId: string;
-  sessionId: string;
-  title: string;
-  dueDate: number;
-  priority: Priority;
-  completed: boolean;
-  createdAt: number;
+export interface MessageAttachment {
+  mimeType: string;
+  data: string; // Base64 encoded data
 }
 
-export interface ToolLog {
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
   timestamp: number;
-  tool: ToolType | string;
-  status: 'info' | 'success' | 'warning' | 'error' | 'intervention';
-  message: string;
+  engine?: 'eden' | 'gemini'; // Identificador do motor que gerou a resposta
+  groundingUrls?: { uri: string; title: string }[];
+  thought?: string; 
+  generatedImages?: string[];
+  isStreaming?: boolean;
+  tokenUsage?: {
+    promptTokens: number;
+    candidatesTokens: number;
+    totalTokens: number;
+  };
+}
+
+export interface AppState {
+  agents: Record<string, AgentConfig>;
+  activeAgentId: string | null;
+  activeSessionId: string | null;
+  sessions: ChatSession[];
+  reminders: ActionReminder[];
+  tokenBalance: number;
+  totalTokensConsumed: number;
+  engineStatus: 'healthy' | 'fallback' | 'offline'; // Status da redundância
 }
 
 export interface AgentConfig {
@@ -35,10 +48,11 @@ export interface AgentConfig {
   systemInstruction: string;
   knowledgeBase?: string;
   tools: ToolType[];
+  toolConfigs: ToolConfig[];
+  routines: AgentRoutine[];
   model: string;
   icon: string;
   temperature?: number;
-  thinkingBudget?: number;
 }
 
 export interface ChatSession {
@@ -47,33 +61,33 @@ export interface ChatSession {
   title: string;
   messages: ChatMessage[];
   createdAt: number;
-  toolLogs?: ToolLog[];
 }
 
-export interface MessageAttachment {
+export interface ActionReminder {
+  id: string;
+  agentId: string;
+  title: string;
+  completed: boolean;
+  createdAt: number;
+}
+
+export interface ToolConfig {
+  tool: ToolType;
+  customInstruction: string;
+  enabled: boolean;
+}
+
+export interface AgentRoutine {
+  id: string;
   name: string;
-  data: string; // base64
-  mimeType: string;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  content: string;
-  timestamp: number;
-  groundingUrls?: { uri: string; title: string; source?: string }[];
-  isStreaming?: boolean;
-  activeTool?: string;
-  attachments?: MessageAttachment[];
-  thought?: string; 
-  generatedImages?: string[];
-  toolStatus?: 'healthy' | 'warning' | 'blocked' | 'waiting';
-  requiresIntervention?: boolean;
-}
-
-export interface AppState {
-  agents: AgentConfig[];
-  activeAgentId: string | null;
-  activeSessionId: string | null;
-  sessions: ChatSession[];
-  reminders: ActionReminder[];
+  task: {
+    id: string;
+    target: string;
+    instruction: string;
+    alertCondition: string;
+  };
+  frequency: string;
+  status: string;
+  efficiencyScore: number;
+  history: any[];
 }

@@ -4,43 +4,65 @@ import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import AgentEditor from './components/AgentEditor';
 import LandingPage from './components/LandingPage';
+import IntelligenceCenter from './components/IntelligenceCenter';
+import MissionControl from './components/MissionControl';
+import CheckoutModal from './components/CheckoutModal';
+import AdminPanel from './components/AdminPanel'; // Novo Import
 import { useForgeStore } from './store';
 import { AgentConfig } from './types';
 
 const App: React.FC = () => {
   const { 
-    isHydrated, isSaving, hydrate, agents, sessions, reminders,
-    activeAgentId, activeSessionId, setActiveAgent, 
-    resetAll, saveAgent, deleteAgent, persist 
+    isHydrated, isSaving, isCheckoutOpen, hydrate, agents, sessions,
+    activeAgentId, activeSessionId, setActiveAgent, setActiveSession,
+    resetAll, saveAgent, deleteAgent, createSession, persist 
   } = useForgeStore();
 
   const [isEditing, setIsEditing] = useState(false);
+  const [showIntelligence, setShowIntelligence] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false); // Novo Estado
   const [editingAgent, setEditingAgent] = useState<AgentConfig | undefined>(undefined);
 
   useEffect(() => {
     hydrate();
   }, []);
 
-  // FLUSH ON EXIT: Garante persistência ao fechar a aba
+  // FLUSH ON EXIT
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      persist(); // Força gravação síncrona/imediata antes de sair
+      persist();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [persist]);
 
-  const activeAgent = useMemo(() => 
-    agents.find(a => a.id === activeAgentId), 
-    [agents, activeAgentId]
-  );
+  // Acesso O(1) direto pela chave
+  const activeAgent = activeAgentId ? agents[activeAgentId] : null;
   
   const activeSession = useMemo(() => 
     sessions.find(s => s.id === activeSessionId), 
     [sessions, activeSessionId]
   );
 
-  const showLanding = activeAgentId === null;
+  const showLanding = activeAgentId === null && !showIntelligence && !showAdmin;
+
+  const handleOpenChat = () => {
+    if (activeAgentId) {
+      if (activeSessionId) {
+        // Já tem sessão ativa, ok.
+      } else {
+        // Criar uma nova se não houver
+        createSession(activeAgentId);
+      }
+    }
+  };
+
+  const handleGoHome = () => {
+    setActiveAgent(null);
+    setActiveSession(null);
+    setShowIntelligence(false);
+    setShowAdmin(false);
+  };
 
   if (!isHydrated) {
     return (
@@ -57,28 +79,45 @@ const App: React.FC = () => {
     <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans selection:bg-blue-500/30">
       <Sidebar 
         onNewAgent={() => { setEditingAgent(undefined); setIsEditing(true); }}
-        onGoHome={() => setActiveAgent(null)}
+        onGoHome={handleGoHome}
+        onOpenAdmin={() => { setShowAdmin(true); setActiveAgent(null); }} // Novo Toggle
       />
       
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        {showLanding ? (
-          <LandingPage onGetStarted={() => { setEditingAgent(undefined); setIsEditing(true); }} />
-        ) : (activeAgent && activeSession) ? (
-          <ChatWindow 
-            agent={activeAgent} 
-            messages={activeSession.messages}
-            onEditAgent={() => { setEditingAgent(activeAgent); setIsEditing(true); }}
+        {showAdmin ? (
+          <AdminPanel onBack={() => setShowAdmin(false)} />
+        ) : showIntelligence ? (
+          <IntelligenceCenter onBack={() => setShowIntelligence(false)} />
+        ) : showLanding ? (
+          <LandingPage 
+            onGetStarted={() => { setEditingAgent(undefined); setIsEditing(true); }} 
+            onViewIntelligence={() => setShowIntelligence(true)}
           />
+        ) : activeAgent ? (
+          activeSession ? (
+            <ChatWindow 
+              agent={activeAgent} 
+              messages={activeSession.messages}
+              onEditAgent={() => { setEditingAgent(activeAgent); setIsEditing(true); }}
+            />
+          ) : (
+            <MissionControl 
+              agent={activeAgent} 
+              onOpenChat={handleOpenChat}
+              onEdit={() => { setEditingAgent(activeAgent); setIsEditing(true); }}
+              onBack={handleGoHome}
+            />
+          )
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-10">
              <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 space-y-8 shadow-2xl">
                 <div className="text-center space-y-4">
                    <div className="text-4xl">⚠️</div>
                    <h2 className="text-white font-black uppercase tracking-widest text-sm">FALHA DE SINCRONIA</h2>
-                   <p className="text-slate-500 text-xs">O núcleo MCP detectou uma inconsistência no robô selecionado ou na sessão ativa.</p>
+                   <p className="text-slate-500 text-xs">O núcleo MCP detectou uma inconsistência grave.</p>
                 </div>
                 <div className="pt-4 flex flex-col gap-3">
-                   <button onClick={() => setActiveAgent(null)} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase transition-all">
+                   <button onClick={handleGoHome} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase transition-all">
                      Voltar ao Centro de Comando
                    </button>
                    <button onClick={resetAll} className="w-full py-3 bg-slate-800 hover:bg-red-900/40 text-slate-400 rounded-2xl text-[10px] font-black uppercase transition-all border border-slate-700">
@@ -106,6 +145,8 @@ const App: React.FC = () => {
           onDelete={(id) => { deleteAgent(id); setIsEditing(false); }}
         />
       )}
+
+      {isCheckoutOpen && <CheckoutModal />}
     </div>
   );
 };

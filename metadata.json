@@ -1,9 +1,9 @@
 {
-  "name": "MCP Agent Forge",
-  "description": "Um poderoso configurador de robôs multiuso através do protocolo MCP. Projete, configure e converse com assistentes digitais equipados com ferramentas especializadas como Google Search e Maps.",
   "requestFramePermissions": [
     "geolocation",
     "camera",
     "microphone"
-  ]
+  ],
+  "name": "",
+  "description": ""
 }
