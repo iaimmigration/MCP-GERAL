@@ -14,7 +14,6 @@ class ForgeDatabase extends Dexie {
 
 const db = new ForgeDatabase();
 
-// Helper para converter array em Record
 const mapAgents = (agentsArray: AgentConfig[]): Record<string, AgentConfig> => {
   return agentsArray.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
 };
@@ -23,6 +22,7 @@ interface ForgeStore extends AppState {
   isHydrated: boolean;
   isSaving: boolean;
   isCheckoutOpen: boolean;
+  isTestMode: boolean; // Flag para ignorar restrições de tokens
   hydrate: () => Promise<void>;
   setCheckoutOpen: (open: boolean) => void;
   setActiveAgent: (id: string | null) => void;
@@ -37,6 +37,7 @@ interface ForgeStore extends AppState {
   persist: () => Promise<void>;
   resetAll: () => Promise<void>;
   renameSession: (id: string, title: string) => void;
+  enableTestMode: () => void;
 }
 
 export const useForgeStore = create<ForgeStore>((set, get) => ({
@@ -45,29 +46,42 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   activeSessionId: null,
   sessions: [],
   reminders: [],
-  tokenBalance: 50000,
+  tokenBalance: 30000, // Saldo inicial Trial atualizado para 30k
   totalTokensConsumed: 0,
   isHydrated: false,
   isSaving: false,
   isCheckoutOpen: false,
+  isTestMode: false,
 
   hydrate: async () => {
+    // Verificar se estamos em modo de teste via URL antes da hidratação
+    const isTestUrl = new URLSearchParams(window.location.search).get('mode') === 'test';
+    
     const saved = await db.state.get('main');
     if (saved) {
-      // Garantir que os dados migrem para o formato de objeto se estiverem como array
       let agentsData = saved.data.agents;
       if (Array.isArray(agentsData)) {
         agentsData = mapAgents(agentsData);
       }
-      set({ ...saved.data, agents: agentsData, isHydrated: true });
+      set({ 
+        ...saved.data, 
+        agents: agentsData, 
+        isHydrated: true, 
+        isTestMode: isTestUrl || saved.data.isTestMode || false 
+      });
     } else {
-      set({ isHydrated: true });
+      set({ isHydrated: true, isTestMode: isTestUrl });
     }
   },
+
+  enableTestMode: () => set({ isTestMode: true }),
 
   setCheckoutOpen: (open) => set({ isCheckoutOpen: open }),
 
   consumeTokens: (amount) => {
+    // Se estiver em modo de teste, não subtrai saldo nem aumenta consumo total
+    if (get().isTestMode) return;
+
     set(state => ({
       tokenBalance: Math.max(0, state.tokenBalance - amount),
       totalTokensConsumed: state.totalTokensConsumed + amount
@@ -157,10 +171,10 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
 
   persist: async () => {
     set({ isSaving: true });
-    const { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed } = get();
+    const { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode } = get();
     await db.state.put({ 
       id: 'main', 
-      data: { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed } 
+      data: { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode } 
     });
     setTimeout(() => set({ isSaving: false }), 300);
   },

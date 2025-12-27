@@ -6,12 +6,12 @@ import { ChatSession, AgentConfig } from '../types';
 interface SidebarProps {
   onNewAgent: () => void;
   onGoHome: () => void;
-  onOpenAdmin?: () => void; // Novo Prop
+  onOpenAdmin?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) => {
   const { 
-    agents, sessions, activeAgentId, activeSessionId, tokenBalance,
+    agents, sessions, activeAgentId, activeSessionId, tokenBalance, isTestMode,
     setActiveAgent, setActiveSession, createSession, renameSession, setCheckoutOpen
   } = useForgeStore();
 
@@ -25,7 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) 
     setEditingSessionId(null);
   };
 
-  const balanceFormatted = new Intl.NumberFormat('pt-BR').format(tokenBalance);
+  const balanceFormatted = isTestMode ? "ILIMITADO" : new Intl.NumberFormat('pt-BR').format(tokenBalance);
 
   return (
     <div className="w-80 h-full border-r border-slate-800 bg-[#020617] flex flex-col shrink-0 overflow-hidden">
@@ -40,21 +40,31 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) 
       </div>
 
       {/* Widget de Carteira */}
-      <div className="p-6 bg-slate-900/40 border-b border-slate-800">
+      <div className={`p-6 border-b border-slate-800 transition-colors ${isTestMode ? 'bg-blue-600/10' : 'bg-slate-900/40'}`}>
          <div className="flex items-center justify-between mb-3">
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Saldo na Nuvem</span>
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isTestMode ? 'text-blue-400' : 'text-slate-500'}`}>
+              {isTestMode ? 'Acesso de Auditoria' : 'Saldo Trial'}
+            </span>
+            <span className={`w-2 h-2 rounded-full animate-pulse ${isTestMode ? 'bg-blue-400' : 'bg-emerald-500'}`}></span>
          </div>
          <div className="flex items-end gap-2">
-            <span className="text-2xl font-black text-white leading-none">{balanceFormatted}</span>
-            <span className="text-[10px] text-emerald-500 font-bold mb-1 uppercase tracking-tighter">Créditos MCP</span>
+            <span className={`text-2xl font-black leading-none ${isTestMode ? 'text-blue-400' : 'text-white'}`}>{balanceFormatted}</span>
+            {!isTestMode && (
+              <span className="text-[10px] text-emerald-500 font-bold mb-1 uppercase tracking-tighter">Créditos</span>
+            )}
          </div>
-         <button 
-          onClick={() => setCheckoutOpen(true)}
-          className="w-full mt-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-500 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
-         >
-           Adquirir Créditos
-         </button>
+         {isTestMode ? (
+           <div className="mt-4 p-3 bg-blue-950/40 border border-blue-500/20 rounded-xl">
+             <p className="text-[8px] font-black text-blue-400 uppercase leading-tight">Link de testes ativo. Restrições de token desabilitadas.</p>
+           </div>
+         ) : (
+           <button 
+            onClick={() => setCheckoutOpen(true)}
+            className="w-full mt-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-500 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+           >
+             Adquirir Créditos
+           </button>
+         )}
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-8">
@@ -75,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) 
                 <span className="text-2xl">{agent.icon}</span>
                 <div className="flex-1 truncate">
                   <div className={`font-black text-sm truncate ${activeAgentId === agent.id ? 'text-white' : 'text-slate-200'}`}>{agent.name}</div>
-                  <div className={`text-[10px] font-medium truncate ${activeAgentId === agent.id ? 'text-blue-100' : 'text-slate-500'}`}>Abrir console</div>
+                  <div className={`text-[10px] font-medium truncate ${activeAgentId === agent.id ? 'text-blue-100' : 'text-slate-500'}`}>Console operacional</div>
                 </div>
               </button>
             ))}
@@ -85,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) 
         {activeAgentId && (
           <div className="space-y-4 pt-4 border-t border-slate-800">
             <div className="flex items-center justify-between px-2">
-              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sessões Ativas</div>
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sessões</div>
               <button onClick={() => createSession(activeAgentId)} className="text-[9px] bg-slate-800 hover:bg-blue-600 text-slate-400 px-2 py-1 rounded-lg transition-all font-black">+ NOVA</button>
             </div>
             <div className="space-y-1">
@@ -106,13 +116,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onGoHome, onOpenAdmin }) 
       </div>
 
       <div className="p-6 border-t border-slate-800 shrink-0 space-y-3">
-        <button onClick={onNewAgent} className="w-full py-4 bg-white hover:bg-slate-100 text-slate-900 rounded-2xl transition-all font-black text-xs uppercase tracking-widest shadow-xl">Configurar Agente</button>
+        <button onClick={onNewAgent} className="w-full py-4 bg-white hover:bg-slate-100 text-slate-900 rounded-2xl transition-all font-black text-xs uppercase tracking-widest shadow-xl">Novo Protocolo</button>
         {onOpenAdmin && (
           <button 
             onClick={onOpenAdmin} 
             className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
           >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             Command Center
           </button>
         )}
