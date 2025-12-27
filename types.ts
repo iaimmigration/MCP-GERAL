@@ -39,39 +39,6 @@ export interface TaskResult {
   created_at: number;
 }
 
-export interface MessageAttachment {
-  mimeType: string;
-  data: string; // Base64 encoded data
-}
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  content: string;
-  timestamp: number;
-  engine?: 'eden' | 'gemini';
-  groundingUrls?: { uri: string; title: string }[];
-  thought?: string; 
-  generatedImages?: string[];
-  isStreaming?: boolean;
-  tokenUsage?: {
-    promptTokens: number;
-    candidatesTokens: number;
-    totalTokens: number;
-  };
-}
-
-export interface AppState {
-  agents: Record<string, AgentConfig>;
-  activeAgentId: string | null;
-  activeSessionId: string | null;
-  sessions: ChatSession[];
-  reminders: ActionReminder[];
-  tokenBalance: number;
-  totalTokensConsumed: number;
-  engineStatus: 'healthy' | 'fallback' | 'offline';
-  clientId: string; // ID único desta instalação/cliente
-}
-
 export interface AgentConfig {
   id: string;
   name: string;
@@ -79,7 +46,7 @@ export interface AgentConfig {
   systemInstruction: string;
   knowledgeBase?: string;
   defaultFolder?: string;
-  targetUrls?: string[]; // URLs específicas para operação
+  targetUrls?: string[];
   tools: ToolType[];
   toolConfigs: ToolConfig[];
   routines: AgentRoutine[];
@@ -116,14 +83,52 @@ export interface ToolConfig {
 export interface AgentRoutine {
   id: string;
   name: string;
+  isCloudScheduled: boolean; // NOVO: Define se roda no servidor
+  cronExpression?: string;    // NOVO: Expressão cron para o servidor
   task: {
     id: string;
     target: string;
     instruction: string;
     alertCondition: string;
   };
-  frequency: string;
-  status: string;
+  frequency: 'hourly' | 'daily' | 'weekly' | 'manual';
+  status: 'active' | 'paused' | 'error';
   efficiencyScore: number;
+  lastServerRun?: number;     // NOVO: Timestamp da última execução offline
   history: any[];
+}
+
+// Added to resolve compilation error in geminiService.ts
+export interface MessageAttachment {
+  name: string;
+  data: string; // base64 encoded string
+  mimeType: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+  timestamp: number;
+  engine?: 'eden' | 'gemini';
+  groundingUrls?: { uri: string; title: string }[];
+  thought?: string; 
+  generatedImages?: string[];
+  isStreaming?: boolean;
+  tokenUsage?: {
+    promptTokens: number;
+    candidatesTokens: number;
+    totalTokens: number;
+  };
+}
+
+export interface AppState {
+  agents: Record<string, AgentConfig>;
+  activeAgentId: string | null;
+  activeSessionId: string | null;
+  sessions: ChatSession[];
+  reminders: ActionReminder[];
+  tokenBalance: number;
+  totalTokensConsumed: number;
+  engineStatus: 'healthy' | 'fallback' | 'offline';
+  clientId: string;
 }

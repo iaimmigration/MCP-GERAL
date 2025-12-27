@@ -25,7 +25,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden font-sans animate-fade-in">
+    <div className="flex-1 flex flex-col h-full bg-[#0a192f] overflow-hidden font-sans animate-fade-in">
       <header className="h-20 border-b border-slate-800 px-8 flex items-center justify-between bg-slate-900/40 backdrop-blur-xl z-20 shrink-0">
         <div className="flex items-center gap-4">
           <button 

@@ -1,7 +1,6 @@
 
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import { AgentConfig, ToolType, ChatMessage, MessageAttachment } from "../types";
-import { processDocumentAsync, getSmartDocumentPrompt } from "./documentService";
 
 export const executeAgentActionStream = async (
   agent: AgentConfig,
@@ -20,7 +19,7 @@ export const executeAgentActionStream = async (
   let effectiveModel = 'gemini-3-pro-preview'; 
   const tools: any[] = [];
   
-  // Reforço de Diretrizes e Sites Alvo
+  // Reforço de Diretrizes e Sites Alvo para o Orquestrador
   let finalInstruction = `
 [STRICT_MODE_ACTIVE]
 Você é o agente "${agent.name}".
@@ -42,7 +41,8 @@ Sempre que usar a ferramenta de pesquisa ou navegação, verifique primeiro este
 REGRAS TÉCNICAS:
 1. Use as ferramentas APENAS quando necessário.
 2. Seja preciso, nunca invente (alucine) fatos não encontrados nas ferramentas.
-3. Priorize os sites alvo definidos acima se o usuário pedir informações específicas desses portais.
+3. SEMPRE retorne os links das fontes encontradas durante a pesquisa.
+4. Priorize os sites alvo definidos acima.
   `;
 
   if (agent.variables && agent.variables.length > 0) {
@@ -93,6 +93,7 @@ REGRAS TÉCNICAS:
 
     let fullText = "";
     let fullThought = "";
+    const allGrounding: { uri: string; title: string }[] = [];
 
     for await (const chunk of responseStream) {
       const part = chunk.candidates?.[0]?.content?.parts?.[0];
@@ -104,12 +105,20 @@ REGRAS TÉCNICAS:
       
       const usage = (chunk as any).usageMetadata;
       const metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
-      const grounding = metadata?.groundingChunks?.map((c: any) => {
-        const item = c.web || c.maps;
-        return item ? { uri: item.uri, title: item.title || item.uri } : null;
-      }).filter(Boolean);
+      
+      if (metadata?.groundingChunks) {
+        metadata.groundingChunks.forEach((c: any) => {
+          const item = c.web || c.maps;
+          if (item && item.uri) {
+            const exists = allGrounding.some(g => g.uri === item.uri);
+            if (!exists) {
+              allGrounding.push({ uri: item.uri, title: item.title || item.uri });
+            }
+          }
+        });
+      }
 
-      onChunk(fullText, grounding, fullThought, undefined, usage, 'gemini');
+      onChunk(fullText, allGrounding, fullThought, undefined, usage, 'gemini');
     }
   } catch (error: any) {
     onLog?.(`FALHA_OPERACIONAL: ${error.message}`, 'error');

@@ -20,7 +20,7 @@ const IntelligenceCenter: React.FC<IntelligenceCenterProps> = ({ onBack }) => {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6 md:p-12 lg:p-20 custom-scrollbar animate-fade-in">
+    <div className="flex-1 overflow-y-auto bg-[#0a192f] p-6 md:p-12 lg:p-20 custom-scrollbar animate-fade-in">
       <div className="max-w-6xl mx-auto space-y-20 pb-20">
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-slate-800 pb-12">

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AGENT_BLUEPRINTS } from '../constants';
 
@@ -8,7 +9,7 @@ interface LandingPageProps {
 
 const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntelligence }) => {
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6 md:p-12 lg:p-16 custom-scrollbar">
+    <div className="flex-1 overflow-y-auto bg-[#0a192f] p-6 md:p-12 lg:p-16 custom-scrollbar">
       <div className="max-w-7xl mx-auto space-y-32">
         {/* Hero Section */}
         <section className="text-center space-y-8 py-10 relative overflow-hidden">
@@ -37,39 +38,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntellige
               onClick={onViewIntelligence}
               className="px-10 py-5 bg-slate-900 border border-slate-800 text-slate-300 rounded-2xl font-black text-lg transition-all hover:bg-slate-800 hover:text-white"
             >
-              Descobrir Capacidades
+              Capacidades Técnicas
             </button>
-          </div>
-        </section>
-
-        {/* Passo a Passo de Ativação */}
-        <section className="space-y-16">
-          <div className="text-center space-y-4">
-            <h2 className="text-2xl font-black text-white uppercase tracking-widest">Fluxo de Implementação</h2>
-            <div className="h-1 w-20 bg-blue-600 mx-auto rounded-full"></div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
-            {/* Conector Visual (Desktop) */}
-            <div className="hidden md:block absolute top-10 left-[10%] right-[10%] h-0.5 bg-slate-800 -z-10"></div>
-            
-            {[
-              { step: "01", title: "Configuração", desc: "Escolha um Blueprint ou comece do zero na central.", icon: "🔧" },
-              { step: "02", title: "Instrução", desc: "Defina como o agente deve pensar e quais dados ele deve saber.", icon: "🧠" },
-              { step: "03", title: "Habilidades", desc: "Ative protocolos como Google Search, Maps ou Calculadora.", icon: "⚡" },
-              { step: "04", title: "Ativação", desc: "Clique em 'Ativar Agente' e comece a delegar tarefas pelo chat.", icon: "🚀" }
-            ].map((item, i) => (
-              <div key={i} className="flex flex-col items-center text-center space-y-6 group">
-                <div className="w-20 h-20 rounded-3xl bg-slate-900 border-2 border-slate-800 flex items-center justify-center text-3xl shadow-xl group-hover:border-blue-500/50 group-hover:bg-slate-800 transition-all">
-                  {item.icon}
-                </div>
-                <div className="space-y-2">
-                  <div className="text-blue-500 font-black text-xs uppercase tracking-[0.3em]">Passo {item.step}</div>
-                  <h3 className="text-white font-bold text-lg">{item.title}</h3>
-                  <p className="text-slate-500 text-xs leading-relaxed max-w-[200px]">{item.desc}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -91,7 +61,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntellige
             {AGENT_BLUEPRINTS.map((agent, i) => (
               <div 
                 key={i} 
-                className="group relative p-6 rounded-3xl bg-slate-900/40 border border-slate-800/60 hover:border-blue-500/40 transition-all hover:bg-slate-900/80 cursor-pointer overflow-hidden flex flex-col justify-between h-64 shadow-lg hover:shadow-blue-500/5"
+                className="group relative p-6 rounded-3xl bg-slate-900/40 border border-slate-800/60 hover:border-blue-500/40 transition-all hover:bg-slate-900/80 cursor-pointer overflow-hidden flex flex-col justify-between h-72 shadow-lg hover:shadow-blue-500/5"
                 onClick={onGetStarted}
               >
                 <div className="relative z-10">
@@ -104,8 +74,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntellige
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-white mb-1 tracking-tight">{agent.name}</h3>
-                    <p className="text-slate-400 text-xs leading-relaxed line-clamp-2 font-medium">
+                    <h3 className="text-lg font-black text-white mb-1 tracking-tight leading-tight">{agent.name}</h3>
+                    <p className="text-slate-400 text-[10px] leading-relaxed line-clamp-3 font-medium opacity-80">
                       {agent.description}
                     </p>
                   </div>
@@ -113,7 +83,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntellige
                 
                 <div className="flex flex-wrap gap-1.5 mt-4">
                   {agent.tools.map((tool, ti) => (
-                    <span key={ti} className="text-[8px] px-2 py-0.5 rounded-md bg-slate-950 text-slate-500 font-black uppercase border border-slate-800 group-hover:border-slate-700">
+                    <span key={ti} className="text-[7px] px-2 py-0.5 rounded-md bg-slate-950 text-slate-500 font-black uppercase border border-slate-800 group-hover:border-slate-700">
                       {tool}
                     </span>
                   ))}
@@ -146,7 +116,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onViewIntellige
           <div className="text-slate-700 text-[9px] font-black uppercase tracking-[0.6em]">
             Agentes de MCP • Versão Enterprise 2025
           </div>
-          <p className="text-[10px] text-slate-800 max-w-lg mx-auto italic">Otimizado para o motor Gemini Pro & Flash da Google GenAI</p>
+          <p className="text-[10px] text-slate-800 max-w-lg mx-auto italic">Otimizado para o motor Gemini 3 Pro</p>
         </footer>
       </div>
     </div>

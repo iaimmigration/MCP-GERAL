@@ -66,17 +66,17 @@ const App: React.FC = () => {
 
   if (!isHydrated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-950">
+      <div className="flex h-screen items-center justify-center bg-[#1e3a8a]">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest font-mono">Iniciando Protocolo MCP...</span>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          <span className="text-[10px] font-black text-blue-100 uppercase tracking-widest font-mono">Iniciando Protocolo MCP...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans selection:bg-blue-500/30">
+    <div className="flex h-screen w-full bg-[#1e3a8a] overflow-hidden font-sans selection:bg-white/30">
       <Sidebar 
         onNewAgent={() => handleStartEdit(undefined)}
         onGoHome={handleGoHome}
@@ -109,14 +109,14 @@ const App: React.FC = () => {
             />
           )
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 p-10">
-             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 space-y-8 shadow-2xl">
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#1e3a8a] p-10">
+             <div className="w-full max-w-md bg-blue-900 border border-blue-800 rounded-[2.5rem] p-10 space-y-8 shadow-2xl">
                 <div className="text-center space-y-4">
                    <div className="text-4xl">⚠️</div>
                    <h2 className="text-white font-black uppercase tracking-widest text-sm">NÚCLEO NÃO ENCONTRADO</h2>
-                   <p className="text-slate-500 text-xs">O agente selecionado não respondeu aos sinais.</p>
+                   <p className="text-blue-200 text-xs">O agente selecionado não respondeu aos sinais.</p>
                 </div>
-                <button onClick={handleGoHome} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase transition-all">
+                <button onClick={handleGoHome} className="w-full py-3 bg-blue-500 hover:bg-blue-400 text-white rounded-2xl text-[10px] font-black uppercase transition-all">
                    Voltar ao Dashboard
                 </button>
              </div>
@@ -124,13 +124,13 @@ const App: React.FC = () => {
         )}
 
         <div className="absolute bottom-4 right-8 pointer-events-none z-50 flex flex-col items-end gap-2">
-           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 backdrop-blur transition-all duration-500 ${isSaving ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-900/80 border border-blue-700 backdrop-blur transition-all duration-500 ${isSaving ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Local Sync</span>
+              <span className="text-[9px] font-black text-blue-100 uppercase tracking-widest">Local Sync</span>
            </div>
-           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-900/40 border border-blue-500/20 backdrop-blur transition-all duration-500 ${isCloudSyncing ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-              <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-ping"></div>
-              <span className="text-[9px] font-black text-blue-300 uppercase tracking-widest">Supabase Cloud Sync</span>
+           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/20 border border-white/20 backdrop-blur transition-all duration-500 ${isCloudSyncing ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></div>
+              <span className="text-[9px] font-black text-white uppercase tracking-widest">Supabase Cloud Sync</span>
            </div>
         </div>
       </main>

@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { Dexie, type EntityTable } from 'dexie';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult, AgentError } from './types';
+import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult, AgentError, AgentRoutine } from './types';
 import { DEFAULT_AGENTS } from './constants';
 
 const supabaseUrl = 'https://udffqkgeiuatdkckjfhu.supabase.co';
@@ -48,6 +48,7 @@ interface ForgeStore extends AppState {
   saveTaskResult: (agentId: string, taskName: string, folder: string, payload: any) => Promise<void>;
   fetchTaskResults: (agentId: string) => Promise<void>;
   logAgentExecution: (agentId: string, success: boolean, error?: AgentError) => void;
+  syncRoutinesToCloud: (agent: AgentConfig) => Promise<void>;
   persist: () => Promise<void>;
   resetAll: () => Promise<void>;
   renameSession: (id: string, title: string) => void;
@@ -111,6 +112,56 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
       isCloudConnected: cloudIsUp,
       isTestMode: isTestUrl || localData.isTestMode || false 
     });
+  },
+
+  syncRoutinesToCloud: async (agent) => {
+    if (!supabase) return;
+    const cloudRoutines = agent.routines.filter(r => r.isCloudScheduled);
+    
+    try {
+      // Sincroniza as rotinas com uma tabela que o Worker Serverless monitora
+      await supabase.from('mcp_orchestrator').upsert({
+        agent_id: agent.id,
+        client_id: get().clientId,
+        routines: cloudRoutines,
+        config: {
+          systemInstruction: agent.systemInstruction,
+          targetUrls: agent.targetUrls,
+          tools: agent.tools,
+          apiKey: process.env.API_KEY // Em produção isso deve ser um Secret no Serverless
+        },
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Erro na orquestração cloud:", e);
+    }
+  },
+
+  saveAgent: async (agent) => {
+    set({ isCloudSyncing: true });
+    
+    // Dispara a sincronia de orquestração se houver rotinas cloud
+    await get().syncRoutinesToCloud(agent);
+
+    if (supabase) {
+      try {
+        await supabase.from('mcp_agents').upsert({
+          id: agent.id,
+          config: agent,
+          updated_at: new Date().toISOString(),
+          is_test_mode: get().isTestMode
+        });
+        set({ isCloudConnected: true });
+      } catch (e) {
+        set({ isCloudConnected: false });
+      }
+    }
+    set(state => ({
+      agents: { ...state.agents, [agent.id]: agent },
+      activeAgentId: agent.id,
+      isCloudSyncing: false
+    }));
+    get().persist();
   },
 
   logAgentExecution: (agentId, success, error) => {
@@ -265,35 +316,13 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     get().persist();
   },
 
-  saveAgent: async (agent) => {
-    set({ isCloudSyncing: true });
-    if (supabase) {
-      try {
-        await supabase.from('mcp_agents').upsert({
-          id: agent.id,
-          config: agent,
-          updated_at: new Date().toISOString(),
-          is_test_mode: get().isTestMode
-        });
-        set({ isCloudConnected: true });
-      } catch (e) {
-        set({ isCloudConnected: false });
-      }
-    }
-    set(state => ({
-      agents: { ...state.agents, [agent.id]: agent },
-      activeAgentId: agent.id,
-      isCloudSyncing: false
-    }));
-    get().persist();
-  },
-
   deleteAgent: async (id) => {
     set({ isCloudSyncing: true });
     if (supabase) {
       try {
         await supabase.from('mcp_agents').delete().eq('id', id);
         await supabase.from('task_results').delete().eq('agent_id', id);
+        await supabase.from('mcp_orchestrator').delete().eq('agent_id', id);
       } catch (e) {}
     }
     set(state => {
@@ -326,6 +355,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
       if (supabase) {
         await supabase.from('mcp_agents').delete().neq('id', 'void');
         await supabase.from('task_results').delete().neq('id', 'void');
+        await supabase.from('mcp_orchestrator').delete().neq('id', 'void');
       }
       await db.state.clear(); 
       window.location.reload(); 

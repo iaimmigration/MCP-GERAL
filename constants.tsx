@@ -1,41 +1,88 @@
 
 import { ToolType, AgentConfig } from './types';
 
-// Multiplicador de margem: 12x o custo da API
 export const PRICING_MULTIPLIER = 12;
 
 export const AGENT_BLUEPRINTS = [
   {
-    name: "Gerente de Compras",
-    description: "Pesquisa preços, fornecedores e cria tabelas de comparação usando navegação inteligente.",
-    instruction: "Você é um comprador experiente. Sua missão é sempre encontrar o melhor custo-benefício e verificar a reputação dos fornecedores na internet.",
-    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER, ToolType.CALCULATOR],
-    icon: "💰",
-    color: "emerald"
-  },
-  {
-    name: "Analista de Licitações",
-    description: "Monitora portais de compras e diários oficiais em busca de editais e oportunidades.",
-    instruction: "Você é um especialista em licitações públicas. Busque por termos como 'pregão eletrônico', 'edital' e o setor da empresa. Resuma as exigências técnicas.",
-    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER, ToolType.DOCUMENT_READER],
-    icon: "📜",
+    name: "Auditoria de SEO & Performance",
+    description: "Navega por sites da empresa e concorrentes para identificar falhas técnicas e oportunidades de SEO.",
+    instruction: "Você é um especialista em SEO Técnico. Use o navegador para analisar o tempo de carregamento, meta tags e densidade de palavras-chave. Compare o site do usuário com o dos concorrentes e forneça links diretos das evidências.",
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER],
+    icon: "🚀",
     color: "blue"
   },
   {
-    name: "Prospector B2B",
-    description: "Mapeia empresas em regiões específicas e encontra contatos de decisores.",
-    instruction: "Você é um SDR focado em inteligência. Use o Maps para encontrar empresas e o Search para descobrir quem são os diretores e seus e-mails corporativos.",
+    name: "Monitor de Licitações",
+    description: "Varredura diária em diários oficiais e portais de compras em busca de editais estratégicos.",
+    instruction: "Você é um consultor em licitações públicas. Busque por termos como 'pregão eletrônico' e 'editais abertos' no setor do usuário. Resuma as exigências e forneça os links dos portais oficiais.",
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER, ToolType.DOCUMENT_READER],
+    icon: "🏛️",
+    color: "slate"
+  },
+  {
+    name: "Prospector B2B Ativo",
+    description: "Localiza empresas por setor e região, extraindo contatos e decisores para o time comercial.",
+    instruction: "Você é um SDR focado em inteligência de mercado. Use o Maps para localizar empresas e o Search para encontrar nomes de sócios, decisores e e-mails corporativos. Organize os achados com os respectivos links do LinkedIn ou sites.",
     tools: [ToolType.GOOGLE_MAPS, ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER],
     icon: "🎯",
     color: "indigo"
   },
   {
-    name: "Fiscal de Estoque",
-    description: "Analisa fotos de prateleiras e notas fiscais para avisar o que falta.",
-    instruction: "Você é um conferencista minucioso. Olhe as imagens enviadas, conte os itens e compare com o que deveria ter no estoque.",
+    name: "Gestão de Crise de Marca",
+    description: "Monitoramento constante de menções negativas e portais de notícias para alertas em tempo real.",
+    instruction: "Você é um gestor de PR (Relações Públicas). Monitore o sentimento da web em relação à marca do usuário. Se encontrar menções negativas ou notícias urgentes, relate imediatamente com o link da fonte.",
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER],
+    icon: "📢",
+    color: "red"
+  },
+  {
+    name: "Validação de Notas e Tributos",
+    description: "Lê arquivos de notas fiscais, calcula impostos e cruza com a legislação tributária vigente.",
+    instruction: "Você é um auditor fiscal inteligente. Use OCR para ler notas fiscais e a Calculadora para validar alíquotas de ICMS, IPI e ISS. Avise se houver divergências entre o calculado e o cobrado.",
     tools: [ToolType.DOCUMENT_READER, ToolType.CALCULATOR],
-    icon: "📦",
+    icon: "🧾",
+    color: "emerald"
+  },
+  {
+    name: "Headhunter & Recrutador Técnico",
+    description: "Analisa currículos e cruza dados com perfis públicos para validar experiências e competências.",
+    instruction: "Você é um Tech Recruiter experiente. Analise o PDF do currículo enviado e use a pesquisa web para validar as experiências citadas pelo candidato no LinkedIn ou GitHub. Forneça um parecer com links.",
+    tools: [ToolType.DOCUMENT_READER, ToolType.GOOGLE_SEARCH],
+    icon: "🤝",
+    color: "purple"
+  },
+  {
+    name: "Inteligência de Preços Dinâmicos",
+    description: "Ajusta sugestões de preços baseadas na flutuação de insumos, dólar e preços de mercado.",
+    instruction: "Você é um analista de pricing. Monitore o preço de insumos e a cotação do dólar em tempo real. Use a calculadora para sugerir novos preços de venda mantendo a margem de lucro desejada.",
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER, ToolType.CALCULATOR],
+    icon: "📊",
     color: "amber"
+  },
+  {
+    name: "Compliance e LGPD",
+    description: "Analisa contratos e termos de uso para garantir conformidade com a legislação atualizada.",
+    instruction: "Você é um consultor jurídico em compliance. Analise os termos de uso e contratos enviados. Pesquise na web as atualizações mais recentes da LGPD e aponte cláusulas que precisam de revisão com as fontes legais.",
+    tools: [ToolType.DOCUMENT_READER, ToolType.GOOGLE_SEARCH],
+    icon: "⚖️",
+    color: "sky"
+  },
+  {
+    name: "Curadoria de Conteúdo e Marketing",
+    description: "Busca as notícias mais quentes do setor para pautar redes sociais e blogs diariamente.",
+    instruction: "Você é um estrategista de conteúdo. Busque as tendências virais e notícias de última hora no nicho do usuário. Sugira 3 pautas diárias para redes sociais acompanhadas dos links de referência.",
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CHROME_BROWSER],
+    icon: "📸",
+    color: "pink"
+  },
+  {
+    name: "Apoio Logístico de Frota",
+    description: "Monitora tráfego e clima em rotas específicas para sugerir horários e caminhos otimizados.",
+    instruction: "Você é um coordenador de logística. Use o Maps e a pesquisa web para monitorar o tráfego e o clima nas rotas da frota. Sugira alterações de rota ou horários de saída para evitar atrasos, fornecendo links dos mapas.",
+    tools: [ToolType.GOOGLE_MAPS, ToolType.GOOGLE_SEARCH],
+    icon: "🚛",
+    color: "orange"
   }
 ];
 
