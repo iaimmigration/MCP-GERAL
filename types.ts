@@ -9,6 +9,20 @@ export enum ToolType {
   CHROME_BROWSER = 'chromeBrowser'
 }
 
+export interface AgentError {
+  id: string;
+  code: 'TOOL_FAILURE' | 'SAFETY_BLOCK' | 'TOKEN_LIMIT' | 'API_ERROR' | 'LOGIC_ERROR';
+  message: string;
+  timestamp: number;
+}
+
+export interface AgentPerformance {
+  precisionScore: number; // 0 a 100
+  totalExecutions: number;
+  successfulExecutions: number;
+  lastError?: AgentError;
+}
+
 export interface AgentVariable {
   key: string;
   value: string;
@@ -64,14 +78,17 @@ export interface AgentConfig {
   description: string;
   systemInstruction: string;
   knowledgeBase?: string;
-  defaultFolder?: string; // Pasta raiz para resultados deste agente
+  defaultFolder?: string;
+  targetUrls?: string[]; // URLs específicas para operação
   tools: ToolType[];
   toolConfigs: ToolConfig[];
   routines: AgentRoutine[];
   model: string;
   icon: string;
   temperature?: number;
-  variables?: AgentVariable[]; 
+  variables?: AgentVariable[];
+  performance?: AgentPerformance;
+  errorHistory?: AgentError[];
 }
 
 export interface ChatSession {

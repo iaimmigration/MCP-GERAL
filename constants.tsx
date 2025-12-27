@@ -45,43 +45,15 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Assistente Geral',
     description: 'Seu braço direito para qualquer tarefa do dia a dia.',
     systemInstruction: 'Você é um assistente executivo focado em produtividade. Ajude o dono da empresa a organizar o dia, pesquisar informações e tomar decisões rápidas.',
-    knowledgeBase: 'Nossos principais concorrentes são: 1. TechNova (technova-industries.com) - Foco em hardware. 2. Spark Solutions (spark-sol.io) - Foco em software SaaS. 3. Global Systems (global-systems-corp.net) - Integrador de sistemas. Nossos produtos chave são o "MCP Starter" e o "MCP Enterprise".',
+    knowledgeBase: 'Nossos principais concorrentes são: TechNova, Spark Solutions e Global Systems.',
+    defaultFolder: 'geral/atendimento',
     tools: [ToolType.GOOGLE_SEARCH, ToolType.CALCULATOR, ToolType.CHROME_BROWSER],
     toolConfigs: [
       { tool: ToolType.GOOGLE_SEARCH, customInstruction: 'Sempre cite os sites de onde tirou a informação.', enabled: true },
       { tool: ToolType.CHROME_BROWSER, customInstruction: 'Aja como se estivesse navegando em abas para o usuário.', enabled: true },
-      { tool: ToolType.CALCULATOR, customInstruction: 'Explique as contas como se estivesse apresentando um relatório financeiro.', enabled: true }
+      { tool: ToolType.CALCULATOR, customInstruction: 'Explique as contas detalhadamente.', enabled: true }
     ],
-    routines: [
-      {
-        id: 'routine-news-001',
-        name: 'Monitor de Notícias',
-        task: {
-          id: 'task-news-check',
-          target: 'Portais de Tecnologia (The Verge, TechCrunch, G1)',
-          instruction: 'Verifique as 3 notícias mais impactantes sobre IA e Negócios na última hora.',
-          alertCondition: 'Sempre que houver lançamento de novos modelos ou mudanças regulatórias.'
-        },
-        frequency: 'A cada 1 hora',
-        status: 'Ativo',
-        efficiencyScore: 98,
-        history: []
-      },
-      {
-        id: 'routine-comp-001',
-        name: 'Pesquisa de Concorrentes',
-        task: {
-          id: 'task-comp-check',
-          target: 'Sites dos Concorrentes (TechNova, Spark, Global)',
-          instruction: 'Acesse as páginas de preços e produtos dos 3 concorrentes citados na base de conhecimento. Verifique os valores atuais para produtos similares ao MCP Starter e Enterprise.',
-          alertCondition: 'Alerte imediatamente se qualquer concorrente reduzir preços em mais de 10% ou lançar uma nova funcionalidade MCP.'
-        },
-        frequency: 'Diariamente',
-        status: 'Ativo',
-        efficiencyScore: 100,
-        history: []
-      }
-    ],
+    routines: [],
     model: 'gemini-3-flash-preview',
     icon: '🏢',
     temperature: 0.5

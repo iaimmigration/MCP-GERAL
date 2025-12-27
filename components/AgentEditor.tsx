@@ -19,6 +19,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
     systemInstruction: '',
     knowledgeBase: '',
     defaultFolder: '',
+    targetUrls: [],
     tools: [],
     toolConfigs: Object.values(ToolType).map(t => ({ tool: t, customInstruction: '', enabled: false })),
     routines: [],
@@ -29,6 +30,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
   });
 
   const [newVar, setNewVar] = useState({ key: '', label: '', value: '' });
+  const [newUrl, setNewUrl] = useState('');
 
   const steps = [
     { label: 'Quem ele é', icon: '👤' },
@@ -50,6 +52,19 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
     setConfig({ ...config, variables: config.variables?.filter(v => v.key !== key) });
   };
 
+  const addUrl = () => {
+    if (!newUrl.trim()) return;
+    const urls = config.targetUrls || [];
+    if (!urls.includes(newUrl)) {
+      setConfig({ ...config, targetUrls: [...urls, newUrl] });
+    }
+    setNewUrl('');
+  };
+
+  const removeUrl = (url: string) => {
+    setConfig({ ...config, targetUrls: (config.targetUrls || []).filter(u => u !== url) });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-fade-in">
       <div className="bg-white rounded-[3rem] w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
@@ -67,7 +82,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
               <div className="flex items-center gap-4">
                 <div className="text-4xl">{config.icon}</div>
                 <div>
-                   <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Configurador Multiuso</h2>
+                   <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Configurador de Protocolo</h2>
                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Etapa {activeStep + 1} de {steps.length}</p>
                 </div>
               </div>
@@ -88,7 +103,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
                       <div className="grid grid-cols-1 gap-3">
                          {AGENT_BLUEPRINTS.map(bp => (
                            <button key={bp.name} onClick={() => {
-                             setConfig({...config, name: bp.name, description: bp.description, systemInstruction: bp.instruction, icon: bp.icon, tools: bp.tools});
+                             setConfig({...config, name: bp.name, description: bp.description, systemInstruction: bp.instruction, icon: bp.icon, tools: bp.tools, targetUrls: []});
                              setActiveStep(1);
                            }} className="p-5 text-left bg-slate-50 border border-slate-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group">
                               <div className="text-2xl mb-2">{bp.icon}</div>
@@ -103,7 +118,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
                       <div className="space-y-4">
                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome do Agente</label>
                          <input type="text" value={config.name} onChange={e => setConfig({...config, name: e.target.value})} placeholder="Ex: Gestor de RH" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none font-bold"/>
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pasta de Resultados (Opcional)</label>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pasta de Resultados</label>
                          <input type="text" value={config.defaultFolder} onChange={e => setConfig({...config, defaultFolder: e.target.value})} placeholder="Ex: /financeiro/relatorios" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none font-medium"/>
                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descrição do Propósito</label>
                          <input type="text" value={config.description} onChange={e => setConfig({...config, description: e.target.value})} placeholder="Para que ele serve?" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none font-medium"/>
@@ -114,15 +129,51 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
            )}
 
            {activeStep === 1 && (
-             <div className="space-y-8 animate-fade-in">
+             <div className="space-y-12 animate-fade-in">
                 <div className="space-y-4">
                    <div className="flex items-center justify-between">
                       <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Diretrizes Principais</label>
-                      <span className="text-[9px] font-bold text-slate-400 italic">Dica: Use as chaves de variáveis aqui.</span>
                    </div>
-                   <textarea value={config.systemInstruction} onChange={e => setConfig({...config, systemInstruction: e.target.value})} placeholder="Ex: Você é o agente especializado para a empresa {{empresa}}..." className="w-full h-40 p-6 bg-slate-50 border border-slate-200 rounded-2xl focus:border-blue-500 outline-none font-medium resize-none"/>
+                   <textarea value={config.systemInstruction} onChange={e => setConfig({...config, systemInstruction: e.target.value})} placeholder="Defina as regras de comportamento..." className="w-full h-32 p-6 bg-slate-50 border border-slate-200 rounded-2xl focus:border-blue-500 outline-none font-medium resize-none"/>
+                </div>
+
+                {/* Seção de URLs de Sites Específicos */}
+                <div className="space-y-6 p-8 bg-slate-50 border border-slate-200 rounded-[2.5rem]">
+                   <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-1">Sites Alvo (URLs)</h3>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Especifique domínios para aumentar a assertividade das buscas.</p>
+                   </div>
+                   
+                   <div className="flex gap-2">
+                      <input 
+                        type="url" 
+                        value={newUrl} 
+                        onChange={e => setNewUrl(e.target.value)} 
+                        onKeyPress={e => e.key === 'Enter' && addUrl()}
+                        placeholder="https://exemplo.com.br" 
+                        className="flex-1 p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      />
+                      <button onClick={addUrl} className="px-6 py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Adicionar Site</button>
+                   </div>
+
+                   <div className="flex flex-wrap gap-2">
+                      {(config.targetUrls || []).map(url => (
+                        <div key={url} className="px-4 py-2 bg-white border border-slate-200 rounded-xl flex items-center gap-3 group">
+                           <span className="text-xs font-bold text-slate-700">{url}</span>
+                           <button onClick={() => removeUrl(url)} className="text-slate-300 hover:text-red-500 transition-colors">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2.5}/></svg>
+                           </button>
+                        </div>
+                      ))}
+                      {(config.targetUrls || []).length === 0 && (
+                        <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest italic py-2">Nenhuma URL específica configurada.</div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="space-y-4">
                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Base de Conhecimento Fixa</label>
-                   <textarea value={config.knowledgeBase} onChange={e => setConfig({...config, knowledgeBase: e.target.value})} placeholder="Documentação, valores ou FAQs..." className="w-full h-40 p-6 bg-slate-50 border border-slate-200 rounded-2xl focus:border-emerald-500 outline-none font-medium resize-none"/>
+                   <textarea value={config.knowledgeBase} onChange={e => setConfig({...config, knowledgeBase: e.target.value})} placeholder="Documentação, valores ou FAQs..." className="w-full h-32 p-6 bg-slate-50 border border-slate-200 rounded-2xl focus:border-emerald-500 outline-none font-medium resize-none"/>
                 </div>
              </div>
            )}

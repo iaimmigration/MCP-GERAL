@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { Dexie, type EntityTable } from 'dexie';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult } from './types';
+import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult, AgentError } from './types';
 import { DEFAULT_AGENTS } from './constants';
 
 const supabaseUrl = 'https://udffqkgeiuatdkckjfhu.supabase.co';
@@ -47,6 +47,7 @@ interface ForgeStore extends AppState {
   createSession: (agentId: string) => string;
   saveTaskResult: (agentId: string, taskName: string, folder: string, payload: any) => Promise<void>;
   fetchTaskResults: (agentId: string) => Promise<void>;
+  logAgentExecution: (agentId: string, success: boolean, error?: AgentError) => void;
   persist: () => Promise<void>;
   resetAll: () => Promise<void>;
   renameSession: (id: string, title: string) => void;
@@ -112,6 +113,37 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     });
   },
 
+  logAgentExecution: (agentId, success, error) => {
+    set(state => {
+      const agent = state.agents[agentId];
+      if (!agent) return state;
+
+      const performance = agent.performance || { precisionScore: 100, totalExecutions: 0, successfulExecutions: 0 };
+      const newTotal = performance.totalExecutions + 1;
+      const newSuccess = success ? performance.successfulExecutions + 1 : performance.successfulExecutions;
+      const newScore = Math.round((newSuccess / newTotal) * 100);
+
+      const errorHistory = agent.errorHistory || [];
+      const updatedErrors = error ? [error, ...errorHistory].slice(0, 10) : errorHistory;
+
+      const updatedAgent = {
+        ...agent,
+        performance: {
+          precisionScore: newScore,
+          totalExecutions: newTotal,
+          successfulExecutions: newSuccess,
+          lastError: error
+        },
+        errorHistory: updatedErrors
+      };
+
+      return {
+        agents: { ...state.agents, [agentId]: updatedAgent }
+      };
+    });
+    get().persist();
+  },
+
   saveTaskResult: async (agentId, taskName, folder, payload) => {
     const clientId = get().clientId;
     set({ isCloudSyncing: true });
@@ -126,10 +158,16 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
           payload: payload
         });
         set({ isCloudConnected: true });
-        // Recarregar resultados locais
         get().fetchTaskResults(agentId);
+        get().logAgentExecution(agentId, true);
       } catch (e) {
         set({ isCloudConnected: false });
+        get().logAgentExecution(agentId, false, {
+          id: crypto.randomUUID(),
+          code: 'API_ERROR',
+          message: 'Falha ao sincronizar com Supabase.',
+          timestamp: Date.now()
+        });
       }
     }
     set({ isCloudSyncing: false });
