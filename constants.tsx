@@ -34,6 +34,41 @@ export const AGENT_BLUEPRINTS = [
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
   {
+    id: 'mcp-degustation-001',
+    name: 'Forge Explorer (Degustação)',
+    specialty: 'Onboarding Multi-Uso',
+    allocationTarget: 'Demonstração de Capacidade',
+    description: 'Agente pré-configurado para você testar buscas, cálculos e automação agora mesmo.',
+    systemInstruction: `Você é o Forge Explorer, o guia de boas-vindas da plataforma Forge. 
+    Seu objetivo é mostrar ao usuário o que um agente MCP pode fazer.
+    Você tem acesso a:
+    1. Google Search: Para buscar informações em tempo real.
+    2. Calculator: Para operações matemáticas precisas.
+    3. RPA Simulation: Você pode descrever passos de automação complexos.
+    
+    Sugira ao usuário pedir para você:
+    - "Pesquisar as últimas notícias sobre IA e resumir"
+    - "Simular a automação de uma compra no Amazon"
+    - "Calcular o ROI de automatizar 40 horas mensais de trabalho"`,
+    tools: [ToolType.GOOGLE_SEARCH, ToolType.CALCULATOR, ToolType.CHROME_BROWSER],
+    routines: [],
+    variables: [
+      { key: 'USER_GOAL', value: 'Testar a plataforma', label: 'Objetivo do Teste' }
+    ],
+    credentials: [],
+    targetSites: ['https://google.com'],
+    knowledgeBase: [],
+    model: 'gemini-3-flash-preview',
+    icon: '✨',
+    status: 'idle',
+    handover: { email: '', autoExportCsv: false },
+    temperature: 0.7,
+    quickActions: [
+      { id: 'q1', label: 'Ver notícias de IA', prompt: 'Pesquise as 3 notícias mais importantes de hoje sobre IA e me dê um resumo executivo.', icon: '📰' },
+      { id: 'q2', label: 'Simular RPA', prompt: 'Simule um processo de RPA para extrair dados de leads de tecnologia no LinkedIn.', icon: '🤖' }
+    ]
+  },
+  {
     id: 'mcp-finance-001',
     name: 'Kernel CFO (SaaS Core)',
     specialty: 'Kernel Financeiro',
@@ -43,7 +78,6 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     tools: [ToolType.FINANCIAL_CONTROLLER],
     routines: [],
     variables: [],
-    // Adicionando propriedades obrigatórias da interface AgentConfig para evitar erro de tipo
     credentials: [],
     targetSites: [],
     knowledgeBase: [],

@@ -19,8 +19,9 @@ export type AgentStatus = 'idle' | 'working' | 'alert' | 'offline';
 export interface User {
   id: string;
   email: string;
-  passwordHash: string; // Em um app real usaríamos hash, aqui simularemos
+  passwordHash: string;
   name?: string;
+  role: 'admin' | 'user';
 }
 
 export interface WebhookConfig {

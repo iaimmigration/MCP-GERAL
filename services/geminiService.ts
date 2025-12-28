@@ -41,13 +41,22 @@ export const executeAgentActionStream = async (
 ): Promise<void> => {
   
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = agent.model || 'gemini-3-pro-preview';
+  const modelName = agent.model || 'gemini-3-flash-preview';
 
   const tools: any[] = [];
+  
+  // Mapeamento de Ferramentas Multiuso
   if (agent.tools.includes(ToolType.FINANCIAL_CONTROLLER)) {
     tools.push({ functionDeclarations: [refillFunctionDeclaration, updateMarkupFunctionDeclaration] });
   }
-  if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) tools.push({ googleSearch: {} });
+  
+  if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) {
+    tools.push({ googleSearch: {} });
+  }
+
+  if (agent.tools.includes(ToolType.GOOGLE_MAPS)) {
+    tools.push({ googleMaps: {} });
+  }
 
   // Injeção dinâmica de Conhecimento e Credenciais no Contexto
   const credentialsContext = agent.credentials?.length > 0 
@@ -72,8 +81,9 @@ export const executeAgentActionStream = async (
     ${knowledgeContext}
     ${sitesContext}
     
+    Se o usuário pedir cálculos complexos, use seu raciocínio lógico interno passo a passo.
     Se precisar realizar login, use as credenciais do COFRE acima. 
-    Se precisar de informações técnicas, consulte os arquivos da BASE DE CONHECIMENTO.
+    Se precisar de informações geográficas ou locais, use a ferramenta Google Maps.
   `;
 
   let contents: any[] = history.map(msg => ({
@@ -102,14 +112,28 @@ export const executeAgentActionStream = async (
     while (continueLoop && iteration < 5) {
       iteration++;
       
+      const config: any = {
+        systemInstruction: systemInstruction,
+        tools: tools.length > 0 ? tools : undefined,
+        temperature: agent.temperature || 0.1,
+      };
+
+      // Adiciona localização para Google Maps se disponível
+      if (agent.tools.includes(ToolType.GOOGLE_MAPS) && location) {
+        config.toolConfig = {
+          retrievalConfig: {
+            latLng: {
+              latitude: location.latitude,
+              longitude: location.longitude
+            }
+          }
+        };
+      }
+
       const response: GenerateContentResponse = await ai.models.generateContent({
         model: modelName,
         contents: contents,
-        config: {
-          systemInstruction: systemInstruction,
-          tools: tools.length > 0 ? tools : undefined,
-          temperature: agent.temperature || 0.1,
-        },
+        config: config,
       });
       
       const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks;

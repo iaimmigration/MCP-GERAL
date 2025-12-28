@@ -47,7 +47,6 @@ const SeleniumTerminal: React.FC<SeleniumTerminalProps> = ({ steps, onManualReso
             addLog(`[${time}] [NAV] URL Alvo: ${step.value}`, 'info');
           } else if (step.action === 'click') {
             addLog(`[${time}] [WAIT] Buscando seletor: ${step.selector}`, 'wait');
-            // Simulação de Self-Healing se o seletor principal fosse falhar
             setTimeout(() => {
               addLog(`[${time}] [HEAL] Seletor principal instável. Usando redundância XPath...`, 'heal');
               addLog(`[${time}] [CLICK] Interação bem-sucedida via Fallback.`, 'success');
@@ -181,6 +180,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
   const [showDashboard, setShowDashboard] = useState(true);
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [tempVariables, setTempVariables] = useState(agent.variables || []);
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | undefined>(undefined);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -188,6 +188,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      });
+    }
+  }, []);
 
   const handleManualHandshake = () => {
     if (!activeSessionId) return;
@@ -236,7 +244,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
             engine: engine,
             thought: thought,
             automationSteps: automationSteps,
-            grounding: grounding, // Inject grounding sources to be rendered
+            grounding: grounding,
             tokenUsage: usage ? {
               promptTokens: usage.promptTokenCount * PRICING_MULTIPLIER,
               candidatesTokens: usage.candidatesTokenCount * PRICING_MULTIPLIER,
@@ -245,13 +253,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
           });
         },
         undefined,
-        undefined,
+        userLocation,
         agents,
         globalInfra
       );
       if (finalUsage) consumeTokens(finalUsage.totalTokenCount * PRICING_MULTIPLIER);
     } catch (error: any) {
-      // If the request fails with an error message containing "Requested entity was not found.", reset key selection state.
       if (error.message?.includes("Requested entity was not found")) {
          await (window as any).aistudio.openSelectKey();
       }
@@ -296,17 +303,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
                   )}
                   <div className="prose prose-invert max-w-none text-[13px] leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.content) }} />
                   
-                  {/* Extract website URLs from grounding Metadata and display them */}
                   {msg.grounding && msg.grounding.length > 0 && (
                     <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
                        <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Fontes Grounding</span>
                        <div className="flex flex-wrap gap-2">
                           {msg.grounding.map((chunk: any, ci: number) => {
-                             if (!chunk.web) return null;
+                             const isWeb = !!chunk.web;
+                             const isMap = !!chunk.maps;
+                             if (!isWeb && !isMap) return null;
+                             
+                             const uri = isWeb ? chunk.web.uri : chunk.maps.uri;
+                             const title = isWeb ? chunk.web.title : (chunk.maps.title || 'Referência Local');
+                             
                              return (
-                               <a key={ci} href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-blue-600/10 border border-blue-500/20 rounded-xl text-[9px] font-black text-blue-400 hover:bg-blue-600/20 transition-all flex items-center gap-2">
+                               <a key={ci} href={uri} target="_blank" rel="noopener noreferrer" className={`px-4 py-2 border rounded-xl text-[9px] font-black transition-all flex items-center gap-2 ${isMap ? 'bg-emerald-600/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-600/20' : 'bg-blue-600/10 border-blue-500/20 text-blue-400 hover:bg-blue-600/20'}`}>
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeWidth={2.5}/></svg>
-                                  {chunk.web.title || 'Referência Web'}
+                                  {isMap ? '📍 ' : ''}{title}
                                </a>
                              );
                           })}
@@ -381,14 +393,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ agent, messages, onEditAgent })
                          <span className="text-blue-500 uppercase">Ativado</span>
                       </div>
                       <div className="flex justify-between items-center text-[9px] font-bold">
+                         <span className="text-slate-500 uppercase">Localização Geográfica</span>
+                         <span className={`uppercase ${userLocation ? 'text-emerald-500' : 'text-amber-500'}`}>
+                           {userLocation ? 'Sincronizada' : 'Pendente'}
+                         </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[9px] font-bold">
                          <span className="text-slate-500 uppercase">Protocolo 2Captcha</span>
                          <span className={`uppercase ${globalInfra.captchaApiKey || agent.infraConfig?.captchaApiKey ? 'text-emerald-500' : 'text-red-500'}`}>
                            {globalInfra.captchaApiKey || agent.infraConfig?.captchaApiKey ? 'Ready' : 'Missing API'}
                          </span>
-                      </div>
-                      <div className="flex justify-between items-center text-[9px] font-bold">
-                         <span className="text-slate-500 uppercase">Redundância XPath</span>
-                         <span className="text-blue-500 uppercase">On Standby</span>
                       </div>
                    </div>
                 </section>
