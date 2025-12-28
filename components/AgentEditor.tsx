@@ -1,7 +1,6 @@
 
-import React, { useState } from 'react';
-import { AgentConfig, ToolType, AgentRoutine, AgentVariable } from '../types';
-import { TOOL_METADATA, AGENT_BLUEPRINTS } from '../constants';
+import React, { useState, useRef } from 'react';
+import { AgentConfig, ToolType, AgentCredential, KnowledgeDoc } from '../types';
 
 interface AgentEditorProps {
   initialConfig?: AgentConfig;
@@ -16,175 +15,175 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
     id: crypto.randomUUID(),
     name: '',
     description: '',
+    specialty: '',
+    allocationTarget: '',
     systemInstruction: '',
-    knowledgeBase: '',
-    defaultFolder: '',
-    targetUrls: [],
     tools: [],
-    toolConfigs: Object.values(ToolType).map(t => ({ tool: t, customInstruction: '', enabled: false })),
+    model: 'gemini-3-pro-preview',
+    icon: '🤖',
+    status: 'idle',
+    handover: { email: '', autoExportCsv: true },
     routines: [],
     variables: [],
-    model: 'gemini-3-flash-preview',
-    icon: '🤖',
-    temperature: 0.7
+    credentials: [],
+    targetSites: [],
+    knowledgeBase: [],
+    temperature: 0.1
   });
 
-  const [newVar, setNewVar] = useState({ key: '', label: '', value: '' });
-  const [newUrl, setNewUrl] = useState('');
-  
-  // Estado para nova rotina
-  const [newRoutine, setNewRoutine] = useState<Partial<AgentRoutine>>({
-    name: '',
-    frequency: 'daily',
-    isCloudScheduled: true,
-    task: { id: '', target: '', instruction: '', alertCondition: '' }
-  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const steps = [
-    { label: 'Quem ele é', icon: '👤' },
-    { label: 'O que ele sabe', icon: '🧠' },
-    { label: 'Variáveis Contextuais', icon: '🏷️' },
-    { label: 'Habilidades', icon: '⚡' },
-    { label: 'Cloud Orchestration', icon: '⏲️' }
+    { label: 'Identidade', icon: '👤' },
+    { label: 'Lógica', icon: '🧠' },
+    { label: 'Cofre', icon: '🔐' },
+    { label: 'Sites/URLs', icon: '🌐' },
+    { label: 'Conhecimento', icon: '📚' },
+    { label: 'Skills', icon: '⚡' }
   ];
 
-  const addVariable = () => {
-    if (!newVar.key || !newVar.label) return;
-    const key = newVar.key.startsWith('{{') ? newVar.key : `{{${newVar.key}}}`;
-    const variable: AgentVariable = { key, label: newVar.label, value: newVar.value };
-    setConfig({ ...config, variables: [...(config.variables || []), variable] });
-    setNewVar({ key: '', label: '', value: '' });
-  };
-
-  const removeVariable = (key: string) => {
-    setConfig({ ...config, variables: config.variables?.filter(v => v.key !== key) });
-  };
-
-  const addUrl = () => {
-    if (!newUrl.trim()) return;
-    const urls = config.targetUrls || [];
-    if (!urls.includes(newUrl)) {
-      setConfig({ ...config, targetUrls: [...urls, newUrl] });
-    }
-    setNewUrl('');
-  };
-
-  const removeUrl = (url: string) => {
-    setConfig({ ...config, targetUrls: (config.targetUrls || []).filter(u => u !== url) });
-  };
-
-  const addRoutine = () => {
-    if (!newRoutine.name || !newRoutine.task?.instruction) return;
-    const routine: AgentRoutine = {
+  const handleAddCredential = () => {
+    const newCred: AgentCredential = {
       id: crypto.randomUUID(),
-      name: newRoutine.name as string,
-      isCloudScheduled: !!newRoutine.isCloudScheduled,
-      frequency: newRoutine.frequency as any,
-      status: 'active',
-      efficiencyScore: 100,
-      task: {
-        id: crypto.randomUUID(),
-        target: 'global',
-        instruction: newRoutine.task.instruction,
-        alertCondition: 'on_new_data'
-      },
-      history: []
+      label: 'Novo Acesso',
+      siteUrl: '',
+      username: '',
+      passwordSecret: ''
     };
-    setConfig({ ...config, routines: [...config.routines, routine] });
-    setNewRoutine({ name: '', frequency: 'daily', isCloudScheduled: true, task: { id: '', target: '', instruction: '', alertCondition: '' } });
+    setConfig({...config, credentials: [...config.credentials, newCred]});
+  };
+
+  const handleUpdateCredential = (id: string, partial: Partial<AgentCredential>) => {
+    setConfig({
+      ...config,
+      credentials: config.credentials.map(c => c.id === id ? {...c, ...partial} : c)
+    });
+  };
+
+  const handleAddSite = () => {
+    setConfig({...config, targetSites: [...config.targetSites, '']});
+  };
+
+  const handleUpdateSite = (idx: number, val: string) => {
+    const updated = [...config.targetSites];
+    updated[idx] = val;
+    setConfig({...config, targetSites: updated});
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newDocs: KnowledgeDoc[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      const docPromise = new Promise<KnowledgeDoc>((resolve) => {
+        reader.onloadend = () => {
+          resolve({
+            id: crypto.randomUUID(),
+            fileName: file.name,
+            mimeType: file.type,
+            base64Data: (reader.result as string).split(',')[1]
+          });
+        };
+      });
+      reader.readAsDataURL(file);
+      newDocs.push(await docPromise);
+    }
+    setConfig({...config, knowledgeBase: [...config.knowledgeBase, ...newDocs]});
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a192f]/90 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-white rounded-[3rem] w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/98 backdrop-blur-3xl p-4 font-sans text-slate-100">
+      <div className="bg-[#0f172a] rounded-[4rem] w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-white/5">
         
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-           <div className="flex items-center gap-6">
-              <button onClick={onCancel} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-red-500 transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/></svg>
-              </button>
-              <div>
-                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Configurar Protocolo</h2>
-                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{steps[activeStep].label}</p>
-              </div>
-           </div>
-           <div className="flex gap-2">
-              {steps.map((s, i) => (
-                <div key={i} className={`w-3 h-3 rounded-full transition-all ${activeStep === i ? 'bg-blue-600 w-8' : 'bg-slate-200'}`}></div>
+        <header className="p-8 border-b border-white/5 flex items-center justify-between bg-black/20">
+           <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-[80%]">
+              {steps.map((step, i) => (
+                <button 
+                  key={i} 
+                  onClick={() => setActiveStep(i)}
+                  className={`flex items-center gap-3 px-6 py-4 rounded-3xl transition-all whitespace-nowrap border ${
+                    activeStep === i 
+                      ? 'bg-blue-600 border-blue-500 text-white shadow-xl scale-105' 
+                      : 'bg-white/5 border-white/5 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                   <span className="text-lg">{step.icon}</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest">{step.label}</span>
+                </button>
               ))}
            </div>
-        </div>
+           <button onClick={onCancel} className="p-4 hover:bg-red-500/10 text-slate-500 hover:text-red-500 rounded-2xl transition-all">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={3}/></svg>
+           </button>
+        </header>
 
-        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar text-slate-900">
+        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar bg-black/10">
            {activeStep === 0 && (
-             <div className="space-y-10 animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                   <div className="space-y-6">
-                      <h3 className="text-2xl font-black tracking-tight">Identidade Operacional</h3>
+             <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex gap-8 items-start">
+                   <div className="w-32 h-32 bg-white/5 rounded-[2.5rem] border border-white/10 flex items-center justify-center text-6xl shadow-inner">
+                      {config.icon}
+                   </div>
+                   <div className="flex-1 space-y-6">
                       <div className="space-y-4">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome do Agente</label>
-                         <input type="text" value={config.name} onChange={e => setConfig({...config, name: e.target.value})} placeholder="Ex: Monitor de Preços" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold"/>
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Propósito</label>
-                         <input type="text" value={config.description} onChange={e => setConfig({...config, description: e.target.value})} placeholder="Para que ele serve?" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium"/>
+                        <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest px-2">Designação do Worker</label>
+                        <input 
+                            type="text" 
+                            value={config.name} 
+                            onChange={e => setConfig({...config, name: e.target.value})} 
+                            className="w-full p-6 bg-white/5 border border-white/10 rounded-3xl font-black text-2xl outline-none focus:border-blue-500 transition-all" 
+                            placeholder="Ex: Auditor Jurídico Pro"
+                        />
                       </div>
-                   </div>
-                   <div className="space-y-6">
-                      <h3 className="text-2xl font-black tracking-tight">Atalhos (Blueprints)</h3>
-                      <div className="grid grid-cols-1 gap-3">
-                         {AGENT_BLUEPRINTS.map(bp => (
-                           <button key={bp.name} onClick={() => setConfig({...config, name: bp.name, description: bp.description, systemInstruction: bp.instruction, icon: bp.icon, tools: bp.tools})} className="p-4 text-left bg-slate-50 border border-slate-200 rounded-2xl hover:bg-blue-50 transition-all">
-                              <div className="flex items-center gap-3">
-                                 <span className="text-xl">{bp.icon}</span>
-                                 <span className="text-[10px] font-black uppercase tracking-widest">{bp.name}</span>
-                              </div>
-                           </button>
-                         ))}
-                      </div>
-                   </div>
-                </div>
-             </div>
-           )}
-
-           {activeStep === 1 && (
-             <div className="space-y-12 animate-fade-in">
-                <div className="space-y-4">
-                   <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">System Instruction (O Cérebro)</label>
-                   <textarea value={config.systemInstruction} onChange={e => setConfig({...config, systemInstruction: e.target.value})} className="w-full h-40 p-6 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-medium resize-none"/>
-                </div>
-
-                <div className="space-y-6 p-8 bg-slate-50 border border-slate-200 rounded-[2.5rem]">
-                   <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Domínios de Pesquisa (URLs Alvo)</h3>
-                   <div className="flex gap-2">
-                      <input type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} onKeyPress={e => e.key === 'Enter' && addUrl()} placeholder="https://portal.com.br" className="flex-1 p-4 bg-white border border-slate-200 rounded-xl outline-none"/>
-                      <button onClick={addUrl} className="px-6 py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Incluir</button>
-                   </div>
-                   <div className="flex flex-wrap gap-2">
-                      {config.targetUrls?.map(url => (
-                        <div key={url} className="px-3 py-2 bg-white border border-slate-200 rounded-xl flex items-center gap-3">
-                           <span className="text-[10px] font-bold">{url}</span>
-                           <button onClick={() => removeUrl(url)} className="text-slate-300 hover:text-red-500">×</button>
+                      <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Especialidade</label>
+                           <input 
+                              type="text" 
+                              value={config.specialty} 
+                              onChange={e => setConfig({...config, specialty: e.target.value})} 
+                              className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-bold text-xs" 
+                              placeholder="RPA, Compliance, etc"
+                           />
                         </div>
-                      ))}
+                        <div className="space-y-4">
+                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Icone Emoji</label>
+                           <input 
+                              type="text" 
+                              value={config.icon} 
+                              onChange={e => setConfig({...config, icon: e.target.value})} 
+                              className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl font-bold text-center"
+                           />
+                        </div>
+                      </div>
                    </div>
                 </div>
              </div>
            )}
 
            {activeStep === 2 && (
-             <div className="space-y-8 animate-fade-in">
-                <div className="p-8 bg-blue-50 rounded-[2rem] border border-blue-100">
-                   <h3 className="text-sm font-black text-blue-900 uppercase tracking-widest mb-4">Parâmetros Dinâmicos</h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="text" value={newVar.label} onChange={e => setNewVar({...newVar, label: e.target.value})} placeholder="Nome da Variável" className="p-4 bg-white rounded-xl outline-none"/>
-                      <input type="text" value={newVar.key} onChange={e => setNewVar({...newVar, key: e.target.value})} placeholder="{{CHAVE}}" className="p-4 bg-white rounded-xl outline-none"/>
-                   </div>
-                   <button onClick={addVariable} className="mt-4 px-8 py-4 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Cadastrar Variável</button>
+             <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-xl font-black text-white uppercase tracking-tighter">Vault: Gestão de Credenciais</h3>
+                   <button onClick={handleAddCredential} className="px-6 py-3 bg-blue-600 rounded-2xl text-[9px] font-black uppercase tracking-widest">Adicionar Acesso</button>
                 </div>
-                <div className="space-y-2">
-                   {config.variables?.map(v => (
-                     <div key={v.key} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex justify-between items-center">
-                        <span className="text-xs font-black text-blue-600">{v.key}</span>
-                        <span className="text-xs font-bold text-slate-500">{v.label}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   {config.credentials.map(cred => (
+                     <div key={cred.id} className="p-8 bg-white/5 border border-white/10 rounded-[2.5rem] space-y-6 relative group">
+                        <button onClick={() => setConfig({...config, credentials: config.credentials.filter(c => c.id !== cred.id)})} className="absolute top-4 right-4 text-slate-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">✕</button>
+                        <input 
+                          value={cred.label} 
+                          onChange={e => handleUpdateCredential(cred.id, {label: e.target.value})} 
+                          className="w-full bg-transparent border-b border-white/10 font-black text-xs uppercase text-blue-500"
+                        />
+                        <div className="space-y-4">
+                           <input placeholder="URL do Site (ex: login.site.com)" value={cred.siteUrl} onChange={e => handleUpdateCredential(cred.id, {siteUrl: e.target.value})} className="w-full bg-black/40 p-4 rounded-xl text-[10px] border border-white/5 outline-none"/>
+                           <input placeholder="Usuário / Email" value={cred.username} onChange={e => handleUpdateCredential(cred.id, {username: e.target.value})} className="w-full bg-black/40 p-4 rounded-xl text-[10px] border border-white/5 outline-none"/>
+                           <input type="password" placeholder="Senha Mestra" value={cred.passwordSecret} onChange={e => handleUpdateCredential(cred.id, {passwordSecret: e.target.value})} className="w-full bg-black/40 p-4 rounded-xl text-[10px] border border-white/5 outline-none"/>
+                        </div>
                      </div>
                    ))}
                 </div>
@@ -192,99 +191,96 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ initialConfig, onSave, onCanc
            )}
 
            {activeStep === 3 && (
-             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 animate-fade-in">
-                {Object.entries(TOOL_METADATA).map(([id, meta]) => (
-                  <button key={id} onClick={() => {
-                    const isEn = config.tools.includes(id as ToolType);
-                    setConfig({
-                      ...config,
-                      tools: isEn ? config.tools.filter(t => t !== id) : [...config.tools, id as ToolType]
-                    });
-                  }} className={`p-6 text-left rounded-3xl border transition-all ${config.tools.includes(id as ToolType) ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-                    <div className="font-black text-xs uppercase mb-1">{meta.label}</div>
-                    <div className="text-[9px] opacity-70 leading-tight">{meta.description}</div>
-                  </button>
-                ))}
-             </div>
-           )}
-
-           {activeStep === 4 && (
-             <div className="space-y-10 animate-fade-in">
-                <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] text-white">
-                   <div className="flex items-center justify-between mb-8">
-                      <div>
-                         <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Orquestrador de Nuvem (Offline)</h3>
-                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Configure tarefas para rodar mesmo com o sistema fechado.</p>
-                      </div>
-                      <div className="px-3 py-1 bg-blue-600 text-white text-[8px] font-black uppercase rounded-full animate-pulse">Server-Side Active</div>
-                   </div>
-
-                   <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                            <label className="text-[9px] font-black uppercase text-slate-500">Nome da Rotina</label>
-                            <input type="text" value={newRoutine.name} onChange={e => setNewRoutine({...newRoutine, name: e.target.value})} placeholder="Ex: Varredura Diária de Preços" className="w-full p-4 bg-slate-950 border border-slate-800 rounded-xl outline-none focus:border-blue-500"/>
-                         </div>
-                         <div className="space-y-2">
-                            <label className="text-[9px] font-black uppercase text-slate-500">Frequência</label>
-                            <select value={newRoutine.frequency} onChange={e => setNewRoutine({...newRoutine, frequency: e.target.value as any})} className="w-full p-4 bg-slate-950 border border-slate-800 rounded-xl outline-none focus:border-blue-500 uppercase text-[10px] font-black">
-                               <option value="hourly">A cada 1 hora</option>
-                               <option value="daily">Diariamente</option>
-                               <option value="weekly">Semanalmente</option>
-                               <option value="manual">Apenas Manual</option>
-                            </select>
-                         </div>
-                      </div>
-
-                      <div className="space-y-2">
-                         <label className="text-[9px] font-black uppercase text-slate-500">Instrução Específica para esta Rotina</label>
-                         <textarea value={newRoutine.task?.instruction} onChange={e => setNewRoutine({...newRoutine, task: {...newRoutine.task!, instruction: e.target.value}})} placeholder="O que o servidor deve buscar quando disparar esta tarefa?" className="w-full h-24 p-4 bg-slate-950 border border-slate-800 rounded-xl outline-none focus:border-blue-500 resize-none"/>
-                      </div>
-
-                      <div className="flex items-center gap-4 p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl">
-                         <input type="checkbox" checked={newRoutine.isCloudScheduled} onChange={e => setNewRoutine({...newRoutine, isCloudScheduled: e.target.checked})} className="w-5 h-5 accent-blue-600"/>
-                         <div>
-                            <div className="text-[10px] font-black uppercase text-white">Execução em Nuvem (Offline)</div>
-                            <p className="text-[8px] text-slate-500 uppercase font-bold">O agente executará esta tarefa no servidor, independentemente de você estar com o app aberto.</p>
-                         </div>
-                      </div>
-
-                      <button onClick={addRoutine} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Salvar Rotina no Orquestrador</button>
-                   </div>
+             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-xl font-black text-white uppercase tracking-tighter">Target Sites & Fontes</h3>
+                   <button onClick={handleAddSite} className="px-6 py-3 bg-blue-600 rounded-2xl text-[9px] font-black uppercase tracking-widest">+ Link</button>
                 </div>
-
-                <div className="space-y-3">
-                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Rotinas Agendadas</h4>
-                   {config.routines.map(r => (
-                     <div key={r.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl flex justify-between items-center group">
-                        <div className="flex items-center gap-4">
-                           <div className={`w-2 h-2 rounded-full ${r.isCloudScheduled ? 'bg-blue-500 animate-pulse' : 'bg-slate-300'}`}></div>
-                           <div>
-                              <div className="text-xs font-black text-slate-900 uppercase">{r.name}</div>
-                              <div className="text-[9px] text-slate-400 font-bold uppercase">{r.frequency} • {r.isCloudScheduled ? 'Server-Side' : 'Client-Side'}</div>
-                           </div>
-                        </div>
-                        <button onClick={() => setConfig({...config, routines: config.routines.filter(x => x.id !== r.id)})} className="text-slate-300 hover:text-red-500 transition-colors">Remover</button>
+                <div className="space-y-4">
+                   {config.targetSites.map((site, idx) => (
+                     <div key={idx} className="flex gap-4">
+                        <input 
+                          value={site} 
+                          onChange={e => handleUpdateSite(idx, e.target.value)} 
+                          className="flex-1 p-5 bg-white/5 border border-white/10 rounded-2xl font-mono text-xs"
+                          placeholder="https://dominio-para-automatizar.com.br"
+                        />
+                        <button onClick={() => setConfig({...config, targetSites: config.targetSites.filter((_, i) => i !== idx)})} className="p-5 text-red-500 bg-red-500/5 rounded-2xl hover:bg-red-500/10">✕</button>
                      </div>
                    ))}
                 </div>
              </div>
            )}
+
+           {activeStep === 4 && (
+             <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-xl font-black text-white uppercase tracking-tighter">Base de Conhecimento (Docs)</h3>
+                   <button onClick={() => fileInputRef.current?.click()} className="px-6 py-3 bg-emerald-600 rounded-2xl text-[9px] font-black uppercase tracking-widest">Upload PDF/DOCX</button>
+                </div>
+                <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload}/>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                   {config.knowledgeBase.map(doc => (
+                     <div key={doc.id} className="p-6 bg-white/5 border border-white/10 rounded-3xl text-center space-y-4 relative group">
+                        <button onClick={() => setConfig({...config, knowledgeBase: config.knowledgeBase.filter(d => d.id !== doc.id)})} className="absolute top-2 right-2 text-slate-700 hover:text-red-500 opacity-0 group-hover:opacity-100">✕</button>
+                        <div className="text-4xl">📄</div>
+                        <p className="text-[10px] font-bold truncate px-2 text-slate-400">{doc.fileName}</p>
+                     </div>
+                   ))}
+                </div>
+             </div>
+           )}
+
+           {/* Mantém outros passos de Lógica e Skills conforme necessário */}
+           {activeStep === 1 && (
+             <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Prompt Mestre de Comportamento</label>
+                <textarea 
+                  value={config.systemInstruction} 
+                  onChange={e => setConfig({...config, systemInstruction: e.target.value})}
+                  className="w-full p-8 bg-black/40 border border-white/5 rounded-[3rem] font-medium text-sm h-80 outline-none focus:border-blue-500 transition-all leading-relaxed"
+                  placeholder="Defina as regras, limites e o tom de voz do agente..."
+                />
+             </div>
+           )}
+
+           {activeStep === 5 && (
+             <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-3 gap-6 animate-in fade-in">
+                {Object.values(ToolType).map(tool => (
+                  <button 
+                    key={tool}
+                    onClick={() => {
+                      const tools = config.tools.includes(tool) 
+                        ? config.tools.filter(t => t !== tool) 
+                        : [...config.tools, tool];
+                      setConfig({...config, tools});
+                    }}
+                    className={`p-8 rounded-[2.5rem] border text-left transition-all flex flex-col gap-4 ${
+                      config.tools.includes(tool) ? 'bg-blue-600 border-blue-500' : 'bg-white/5 border-white/5 opacity-40 hover:opacity-100'
+                    }`}
+                  >
+                     <span className="text-[10px] font-black uppercase tracking-widest">{tool.replace('_', ' ')}</span>
+                  </button>
+                ))}
+             </div>
+           )}
         </div>
 
-        <div className="p-8 border-t border-slate-100 flex justify-between items-center bg-slate-50/50">
-           <button onClick={onCancel} className="text-[10px] font-black text-slate-400 uppercase hover:text-red-500 transition-colors">Descartar Alterações</button>
-           <div className="flex gap-4">
-              {activeStep > 0 && (
-                <button onClick={() => setActiveStep(activeStep - 1)} className="px-8 py-4 bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase">Anterior</button>
-              )}
-              {activeStep < steps.length - 1 ? (
-                <button onClick={() => setActiveStep(activeStep + 1)} className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase shadow-xl">Próximo</button>
-              ) : (
-                <button onClick={() => onSave(config)} className="px-12 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase shadow-xl shadow-blue-500/20">Salvar Sincronia Cloud</button>
-              )}
+        <footer className="p-10 border-t border-white/5 flex justify-between items-center bg-black/40">
+           <div className="flex flex-col">
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Protocolo de Segurança</span>
+              <span className="text-emerald-500 text-[10px] font-bold">AES-256 Cloud Vault Ready</span>
            </div>
-        </div>
+           <div className="flex gap-6">
+              <button onClick={onCancel} className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-all">Descartar</button>
+              <button 
+                onClick={() => onSave(config)}
+                className="px-20 py-5 bg-blue-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/20 hover:scale-105 active:scale-95 transition-all"
+              >
+                Implantar Agente
+              </button>
+           </div>
+        </footer>
       </div>
     </div>
   );

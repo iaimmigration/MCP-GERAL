@@ -1,364 +1,186 @@
 
 import { create } from 'zustand';
 import { Dexie, type EntityTable } from 'dexie';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AgentConfig, ChatSession, AppState, ChatMessage, TaskResult, AgentError, AgentRoutine } from './types';
+import { AgentConfig, AppState, User } from './types';
 import { DEFAULT_AGENTS } from './constants';
-
-const supabaseUrl = 'https://udffqkgeiuatdkckjfhu.supabase.co';
-const supabaseKey = 'sb_publishable_AObeZqTHVo5YcohbdehXrA_pl50Tr6U';
-
-const supabase: SupabaseClient | null = (supabaseUrl && supabaseKey) 
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
 
 class ForgeDatabase extends Dexie {
   state!: EntityTable<{ id: string; data: any }, 'id'>;
   constructor() {
-    super('ForgeEnterpriseDB');
-    (this as Dexie).version(2).stores({ state: 'id' });
+    super('ForgeEnterprise_V6');
+    (this as Dexie).version(1).stores({ state: 'id' });
   }
 }
 
 const db = new ForgeDatabase();
 
-const mapAgents = (agentsArray: AgentConfig[]): Record<string, AgentConfig> => {
-  return agentsArray.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
-};
-
 interface ForgeStore extends AppState {
   isHydrated: boolean;
-  isSaving: boolean;
-  isCloudSyncing: boolean;
-  isCloudConnected: boolean;
-  isCheckoutOpen: boolean;
-  isTestMode: boolean;
-  taskResults: TaskResult[];
+  isAuthenticated: boolean;
+  vocalDraft: AgentConfig;
+  masterSecret: string;
+  vaultUnlocked: boolean;
   hydrate: () => Promise<void>;
-  setCheckoutOpen: (open: boolean) => void;
+  login: (email: string, passwordHash: string) => { success: boolean; error?: string };
+  register: (email: string, passwordHash: string) => { success: boolean; error?: string };
+  logout: () => void;
   setActiveAgent: (id: string | null) => void;
   setActiveSession: (id: string | null) => void;
-  addMessage: (sessionId: string, message: ChatMessage) => void;
-  updateLastMessage: (sessionId: string, data: Partial<ChatMessage>) => void;
-  consumeTokens: (amount: number) => void;
-  addCredits: (amount: number) => void;
   saveAgent: (agent: AgentConfig) => void;
   deleteAgent: (id: string) => void;
-  createSession: (agentId: string) => string;
-  saveTaskResult: (agentId: string, taskName: string, folder: string, payload: any) => Promise<void>;
-  fetchTaskResults: (agentId: string) => Promise<void>;
-  logAgentExecution: (agentId: string, success: boolean, error?: AgentError) => void;
-  syncRoutinesToCloud: (agent: AgentConfig) => Promise<void>;
+  setVocalDraft: (draft: Partial<AgentConfig>) => void;
+  resetVocalDraft: () => void;
+  consumeTokens: (amount: number) => void;
   persist: () => Promise<void>;
-  resetAll: () => Promise<void>;
-  renameSession: (id: string, title: string) => void;
-  enableTestMode: () => void;
+  setCheckoutOpen: (open: boolean) => void;
+  isCheckoutOpen: boolean;
+  addCredits: (amount: number) => void;
 }
 
+const createInitialDraft = (id = crypto.randomUUID()): AgentConfig => ({
+  id,
+  name: '',
+  description: '',
+  specialty: 'Automação',
+  allocationTarget: 'General',
+  systemInstruction: '',
+  tools: [],
+  model: 'gemini-3-pro-preview',
+  icon: '🤖',
+  status: 'idle',
+  handover: { email: '', autoExportCsv: true },
+  routines: [],
+  variables: [],
+  credentials: [],
+  targetSites: [],
+  knowledgeBase: [],
+  temperature: 0.1
+});
+
 export const useForgeStore = create<ForgeStore>((set, get) => ({
-  agents: mapAgents(DEFAULT_AGENTS),
+  users: [],
+  currentUser: null,
+  agents: {},
   activeAgentId: null,
   activeSessionId: null,
   sessions: [],
-  reminders: [],
-  tokenBalance: 30000,
+  tokenBalance: 50000,
   totalTokensConsumed: 0,
-  isHydrated: false,
-  isSaving: false,
-  isCloudSyncing: false,
-  isCloudConnected: false,
-  isCheckoutOpen: false,
-  isTestMode: false,
-  engineStatus: 'healthy',
-  clientId: 'client-' + crypto.randomUUID().slice(0, 8),
   taskResults: [],
+  clientId: 'client-' + Math.random().toString(36).substring(7),
+  financialStats: { userSalesVolume: 0, currentMarkup: 20 },
+  globalInfra: { executionMode: 'simulated' },
+  vocalDraft: createInitialDraft(),
+  masterSecret: '',
+  vaultUnlocked: false,
+  isHydrated: false,
+  isAuthenticated: false,
+  isCheckoutOpen: false,
 
   hydrate: async () => {
-    const isTestUrl = new URLSearchParams(window.location.search).get('mode') === 'test';
     const saved = await db.state.get('main');
-    let localData = saved ? saved.data : {};
-    
-    let cloudAgents: Record<string, AgentConfig> = {};
-    let cloudIsUp = false;
-
-    if (supabase) {
-      try {
-        const { data: allAgents, error } = await supabase
-          .from('mcp_agents')
-          .select('*')
-          .order('updated_at', { ascending: false });
-
-        if (!error && allAgents) {
-          cloudIsUp = true;
-          allAgents.forEach(row => {
-            cloudAgents[row.id] = row.config;
-          });
-        }
-      } catch (e) {}
+    if (saved) {
+      set({ ...saved.data });
+    } else {
+      const defaultAgentsRecord = DEFAULT_AGENTS.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
+      set({ agents: defaultAgentsRecord });
     }
-
-    let agentsData = localData.agents || DEFAULT_AGENTS;
-    if (Array.isArray(agentsData)) {
-      agentsData = mapAgents(agentsData);
-    }
-
-    const mergedAgents = { ...agentsData, ...cloudAgents };
-
-    set({ 
-      ...localData,
-      clientId: localData.clientId || get().clientId,
-      agents: mergedAgents, 
-      isHydrated: true, 
-      isCloudConnected: cloudIsUp,
-      isTestMode: isTestUrl || localData.isTestMode || false 
-    });
+    set({ isHydrated: true });
   },
 
-  syncRoutinesToCloud: async (agent) => {
-    if (!supabase) return;
-    const cloudRoutines = agent.routines.filter(r => r.isCloudScheduled);
-    
-    try {
-      // Sincroniza as rotinas com uma tabela que o Worker Serverless monitora
-      await supabase.from('mcp_orchestrator').upsert({
-        agent_id: agent.id,
-        client_id: get().clientId,
-        routines: cloudRoutines,
-        config: {
-          systemInstruction: agent.systemInstruction,
-          targetUrls: agent.targetUrls,
-          tools: agent.tools,
-          apiKey: process.env.API_KEY // Em produção isso deve ser um Secret no Serverless
-        },
-        updated_at: new Date().toISOString()
-      });
-    } catch (e) {
-      console.error("Erro na orquestração cloud:", e);
+  register: (email, passwordHash) => {
+    const { users } = get();
+    if (users.find(u => u.email === email)) {
+      return { success: false, error: 'Este e-mail já está registrado.' };
     }
+    const newUser: User = { id: crypto.randomUUID(), email, passwordHash };
+    set(state => ({ users: [...state.users, newUser], currentUser: newUser, isAuthenticated: true }));
+    get().persist();
+    return { success: true };
   },
 
-  saveAgent: async (agent) => {
-    set({ isCloudSyncing: true });
+  login: (email, passwordHash) => {
+    const { users } = get();
+    const user = users.find(u => u.email === email && u.passwordHash === passwordHash);
     
-    // Dispara a sincronia de orquestração se houver rotinas cloud
-    await get().syncRoutinesToCloud(agent);
-
-    if (supabase) {
-      try {
-        await supabase.from('mcp_agents').upsert({
-          id: agent.id,
-          config: agent,
-          updated_at: new Date().toISOString(),
-          is_test_mode: get().isTestMode
-        });
-        set({ isCloudConnected: true });
-      } catch (e) {
-        set({ isCloudConnected: false });
-      }
+    if (user) {
+      set({ currentUser: user, isAuthenticated: true });
+      get().persist();
+      return { success: true };
     }
-    set(state => ({
-      agents: { ...state.agents, [agent.id]: agent },
-      activeAgentId: agent.id,
-      isCloudSyncing: false
-    }));
+    
+    // Fallback para desenvolvimento (se não houver usuários)
+    if (users.length === 0 && email === 'admin@forge.com' && passwordHash === 'admin') {
+      const admin: User = { id: 'admin', email: 'admin@forge.com', passwordHash: 'admin' };
+      set({ users: [admin], currentUser: admin, isAuthenticated: true });
+      get().persist();
+      return { success: true };
+    }
+
+    return { success: false, error: 'E-mail ou senha incorretos.' };
+  },
+
+  logout: () => {
+    set({ isAuthenticated: false, currentUser: null, activeAgentId: null, activeSessionId: null });
     get().persist();
   },
 
-  logAgentExecution: (agentId, success, error) => {
-    set(state => {
-      const agent = state.agents[agentId];
-      if (!agent) return state;
-
-      const performance = agent.performance || { precisionScore: 100, totalExecutions: 0, successfulExecutions: 0 };
-      const newTotal = performance.totalExecutions + 1;
-      const newSuccess = success ? performance.successfulExecutions + 1 : performance.successfulExecutions;
-      const newScore = Math.round((newSuccess / newTotal) * 100);
-
-      const errorHistory = agent.errorHistory || [];
-      const updatedErrors = error ? [error, ...errorHistory].slice(0, 10) : errorHistory;
-
-      const updatedAgent = {
-        ...agent,
-        performance: {
-          precisionScore: newScore,
-          totalExecutions: newTotal,
-          successfulExecutions: newSuccess,
-          lastError: error
-        },
-        errorHistory: updatedErrors
-      };
-
-      return {
-        agents: { ...state.agents, [agentId]: updatedAgent }
-      };
-    });
-    get().persist();
-  },
-
-  saveTaskResult: async (agentId, taskName, folder, payload) => {
-    const clientId = get().clientId;
-    set({ isCloudSyncing: true });
-    
-    if (supabase) {
-      try {
-        await supabase.from('task_results').insert({
-          client_id: clientId,
-          agent_id: agentId,
-          task_name: taskName,
-          folder_path: folder,
-          payload: payload
-        });
-        set({ isCloudConnected: true });
-        get().fetchTaskResults(agentId);
-        get().logAgentExecution(agentId, true);
-      } catch (e) {
-        set({ isCloudConnected: false });
-        get().logAgentExecution(agentId, false, {
-          id: crypto.randomUUID(),
-          code: 'API_ERROR',
-          message: 'Falha ao sincronizar com Supabase.',
-          timestamp: Date.now()
-        });
-      }
-    }
-    set({ isCloudSyncing: false });
-  },
-
-  fetchTaskResults: async (agentId) => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from('task_results')
-      .select('*')
-      .eq('client_id', get().clientId)
-      .eq('agent_id', agentId)
-      .order('created_at', { ascending: false });
-    
-    if (!error && data) {
-      set({ taskResults: data.map(d => ({
-        id: d.id,
-        client_id: d.client_id,
-        agent_id: d.agent_id,
-        task_name: d.task_name,
-        folder_path: d.folder_path,
-        payload: d.payload,
-        created_at: new Date(d.created_at).getTime()
-      })) });
-    }
-  },
-
-  enableTestMode: () => set({ isTestMode: true }),
   setCheckoutOpen: (open) => set({ isCheckoutOpen: open }),
-
-  consumeTokens: (amount) => {
-    if (get().isTestMode) return;
-    set(state => ({
-      tokenBalance: Math.max(0, state.tokenBalance - amount),
-      totalTokensConsumed: state.totalTokensConsumed + amount
-    }));
-    get().persist();
-  },
-
+  
   addCredits: (amount) => {
-    set(state => ({ 
-      tokenBalance: state.tokenBalance + amount,
-      isCheckoutOpen: false 
-    }));
+    set(state => ({ tokenBalance: state.tokenBalance + amount }));
     get().persist();
   },
 
-  setActiveAgent: (id) => {
-    const state = get();
-    if (id) get().fetchTaskResults(id);
-    const firstSessionForAgent = state.sessions.find(s => s.agentId === id);
-    set({ 
-      activeAgentId: id, 
-      activeSessionId: firstSessionForAgent ? firstSessionForAgent.id : null 
-    });
-  },
-
+  setActiveAgent: (id) => set({ activeAgentId: id }),
   setActiveSession: (id) => set({ activeSessionId: id }),
 
-  createSession: (agentId) => {
-    const newSession: ChatSession = { 
-      id: crypto.randomUUID(), 
-      agentId, 
-      title: 'Nova Conversa', 
-      messages: [], 
-      createdAt: Date.now() 
-    };
-    set(state => ({ 
-      sessions: [newSession, ...state.sessions], 
-      activeSessionId: newSession.id, 
-      activeAgentId: agentId 
-    }));
-    get().persist();
-    return newSession.id;
-  },
-
-  addMessage: (sessionId, message) => {
-    set(state => ({
-      sessions: state.sessions.map(s => s.id === sessionId ? { ...s, messages: [...s.messages, message] } : s)
-    }));
+  saveAgent: (agent) => {
+    set(state => ({ agents: { ...state.agents, [agent.id]: agent } }));
     get().persist();
   },
 
-  updateLastMessage: (sessionId, data) => {
-    set(state => ({
-      sessions: state.sessions.map(s => {
-        if (s.id === sessionId) {
-          const msgs = [...s.messages];
-          if (msgs.length > 0) msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...data };
-          return { ...s, messages: msgs };
-        }
-        return s;
-      })
-    }));
-    get().persist();
-  },
-
-  deleteAgent: async (id) => {
-    set({ isCloudSyncing: true });
-    if (supabase) {
-      try {
-        await supabase.from('mcp_agents').delete().eq('id', id);
-        await supabase.from('task_results').delete().eq('agent_id', id);
-        await supabase.from('mcp_orchestrator').delete().eq('agent_id', id);
-      } catch (e) {}
-    }
+  deleteAgent: (id) => {
     set(state => {
-      const { [id]: _, ...remainingAgents } = state.agents;
-      return { 
-        agents: remainingAgents, 
-        activeAgentId: state.activeAgentId === id ? null : state.activeAgentId,
-        isCloudSyncing: false
-      };
+      const { [id]: _, ...remaining } = state.agents;
+      return { agents: remaining, activeAgentId: state.activeAgentId === id ? null : state.activeAgentId };
     });
     get().persist();
   },
 
-  renameSession: (id, title) => set(state => ({ 
-    sessions: state.sessions.map(s => s.id === id ? { ...s, title } : s) 
-  })),
+  setVocalDraft: (draft) => {
+    set(state => ({ vocalDraft: { ...state.vocalDraft, ...draft } }));
+    get().persist();
+  },
+
+  resetVocalDraft: () => {
+    set({ vocalDraft: createInitialDraft() });
+    get().persist();
+  },
+
+  consumeTokens: (amount) => {
+    set(state => ({ 
+      totalTokensConsumed: state.totalTokensConsumed + amount,
+      tokenBalance: state.tokenBalance - amount
+    }));
+    get().persist();
+  },
 
   persist: async () => {
-    set({ isSaving: true });
-    const { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode, clientId } = get();
-    await db.state.put({ 
-      id: 'main', 
-      data: { agents, activeAgentId, activeSessionId, sessions, reminders, tokenBalance, totalTokensConsumed, isTestMode, clientId } 
-    });
-    setTimeout(() => set({ isSaving: false }), 300);
-  },
-
-  resetAll: async () => { 
-    if (confirm("Reset total?")) {
-      if (supabase) {
-        await supabase.from('mcp_agents').delete().neq('id', 'void');
-        await supabase.from('task_results').delete().neq('id', 'void');
-        await supabase.from('mcp_orchestrator').delete().neq('id', 'void');
-      }
-      await db.state.clear(); 
-      window.location.reload(); 
-    }
+    const state = get();
+    await db.state.put({ id: 'main', data: {
+      users: state.users,
+      currentUser: state.currentUser,
+      agents: state.agents,
+      sessions: state.sessions,
+      tokenBalance: state.tokenBalance,
+      totalTokensConsumed: state.totalTokensConsumed,
+      taskResults: state.taskResults,
+      clientId: state.clientId,
+      financialStats: state.financialStats,
+      globalInfra: state.globalInfra,
+      isAuthenticated: state.isAuthenticated,
+      vocalDraft: state.vocalDraft
+    }});
   }
 }));

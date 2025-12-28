@@ -1,159 +1,213 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useForgeStore } from '../store';
-import { PRICING_MULTIPLIER } from '../constants';
-import { AgentConfig } from '../types';
+import { executeAgentActionStream } from '../services/geminiService';
+import { encryptData } from '../services/cryptoService';
+import { saveRemoteConfig } from '../services/supabaseService';
 
-interface AdminPanelProps {
-  onBack: () => void;
-}
+const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const store = useForgeStore();
+  const { financialStats, totalTokensConsumed, tokenBalance, remoteKeys, masterSecret, vaultUnlocked, unlockVault, syncRemoteKeys } = store;
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
-  const { 
-    agents, sessions, totalTokensConsumed, tokenBalance, 
-    engineStatus, resetAll, isCloudConnected, isTestMode
-  } = useForgeStore();
+  const [cfoLog, setCfoLog] = useState<{msg: string, type: 'info' | 'success' | 'warn' | 'error'}[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [unlockInput, setUnlockInput] = useState('');
+  const [unlockError, setUnlockError] = useState(false);
+  
+  const [vaultInputs, setVaultInputs] = useState({
+    GEMINI_API_KEY: remoteKeys['GEMINI_API_KEY'] || '',
+    RESEND_API_KEY: remoteKeys['RESEND_API_KEY'] || '',
+    BROWSERLESS_URL: remoteKeys['BROWSERLESS_URL'] || ''
+  });
 
-  const agentsList = Object.values(agents) as AgentConfig[];
-  const totalMessages = sessions.reduce((acc, s) => acc + s.messages.length, 0);
+  const cfoAgent = store.agents['mcp-finance-001'];
 
-  const stats = [
-    { label: 'Agentes Ativos', value: agentsList.length, icon: '🤖', color: 'blue' },
-    { label: 'Sessões Totais', value: sessions.length, icon: '📂', color: 'emerald' },
-    { label: 'Mensagens Processadas', value: totalMessages, icon: '💬', color: 'purple' },
-    { label: 'Consumo Global', value: new Intl.NumberFormat('pt-BR').format(totalTokensConsumed), icon: '📊', color: 'amber' },
-  ];
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlockError(false);
+    const success = await unlockVault(unlockInput);
+    if (!success) {
+      setUnlockError(true);
+      setCfoLog(prev => [{msg: "ALERTA: Tentativa de acesso ao cofre com chave incorreta.", type: 'error'}, ...prev]);
+    } else {
+      setVaultInputs({
+        GEMINI_API_KEY: store.remoteKeys['GEMINI_API_KEY'] || '',
+        RESEND_API_KEY: store.remoteKeys['RESEND_API_KEY'] || '',
+        BROWSERLESS_URL: store.remoteKeys['BROWSERLESS_URL'] || ''
+      });
+      setCfoLog(prev => [{msg: "COFRE DESBLOQUEADO: Acesso autorizado ao kernel de infraestrutura.", type: 'success'}, ...prev]);
+    }
+  };
+
+  const handleSaveVault = async () => {
+    if (!vaultUnlocked) return;
+    setIsSaving(true);
+    try {
+      for (const [key, value] of Object.entries(vaultInputs)) {
+        if (value) {
+          const encrypted = await encryptData(value, masterSecret);
+          await saveRemoteConfig(key, encrypted);
+        }
+      }
+      await syncRemoteKeys();
+      setCfoLog(prev => [{msg: "SINCRONIZAÇÃO COMPLETA: Infraestrutura atualizada no Supabase.", type: 'success'}, ...prev]);
+    } catch (e: any) {
+      setCfoLog(prev => [{msg: `ERRO DE ESCRITA: ${e.message}`, type: 'error'}, ...prev]);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const runCfoAnalysis = async () => {
+    if (!cfoAgent || isAnalyzing) return;
+    setIsAnalyzing(true);
+    setCfoLog(prev => [{msg: "INICIANDO VARREDURA DE INTEGRIDADE...", type: 'info'}, ...prev]);
+
+    const context = `
+      ESTADO ATUAL DO ECOSSISTEMA:
+      - Total Consumido: ${totalTokensConsumed} tokens
+      - Saldo Usuários: ${tokenBalance}
+      - Markup: ${financialStats.currentMarkup}x
+      - Infra Remota: ${vaultUnlocked ? 'Online' : 'Trancada'}
+    `;
+
+    try {
+      await executeAgentActionStream(
+        cfoAgent, context, [], [],
+        () => {},
+        (msg, level) => {
+          setCfoLog(prev => [{msg, type: level === 'success' ? 'success' : level === 'warn' ? 'warn' : 'info'}, ...prev]);
+        }
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0a192f] overflow-hidden font-sans animate-fade-in">
-      <header className="h-20 border-b border-slate-800 px-8 flex items-center justify-between bg-slate-900/40 backdrop-blur-xl z-20 shrink-0">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack} 
-            className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 border border-slate-700 transition-all flex items-center gap-2 group"
-          >
-            <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M15 19l-7-7 7-7" strokeWidth="2.5" stroke="currentColor"/>
-            </svg>
-            <span className="text-[10px] font-black uppercase tracking-widest">Sair do Admin</span>
+    <div className="flex-1 flex flex-col h-full bg-[#030712] overflow-hidden font-sans animate-fade-in relative">
+      
+      {/* Overlay de Bloqueio do Cofre */}
+      {!vaultUnlocked && (
+        <div className="absolute inset-0 z-50 bg-[#030712]/90 backdrop-blur-3xl flex items-center justify-center p-6">
+           <div className="max-w-md w-full bg-white/5 border border-white/10 p-12 rounded-[3.5rem] space-y-8 shadow-2xl">
+              <div className="text-center space-y-4">
+                 <div className="w-20 h-20 bg-blue-600/20 rounded-[2rem] flex items-center justify-center text-4xl mx-auto border border-blue-500/30">🔐</div>
+                 <h2 className="text-white font-black text-xl uppercase tracking-tighter">Cofre de Infraestrutura</h2>
+                 <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Insira sua Master Key para descriptografar os segredos do Supabase.</p>
+              </div>
+              <form onSubmit={handleUnlock} className="space-y-6">
+                 <input 
+                    type="password" 
+                    value={unlockInput}
+                    onChange={e => setUnlockInput(e.target.value)}
+                    className={`w-full p-6 bg-black border ${unlockError ? 'border-red-500' : 'border-white/10'} rounded-3xl text-white text-center font-mono outline-none focus:border-blue-500 transition-all`}
+                    placeholder="••••••••••••••••"
+                 />
+                 <button type="submit" className="w-full py-6 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl active:scale-95 transition-all">
+                    Desbloquear Kernel
+                 </button>
+              </form>
+              <button onClick={onBack} className="w-full text-[9px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors">Voltar ao Dashboard</button>
+           </div>
+        </div>
+      )}
+
+      <header className="h-24 border-b border-white/5 px-10 flex items-center justify-between bg-black/40 backdrop-blur-3xl shrink-0">
+        <div className="flex items-center gap-8">
+          <button onClick={onBack} className="p-4 bg-white/5 border border-white/10 rounded-[1.5rem] text-slate-400 hover:text-white">
+             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth={3}/></svg>
           </button>
-          <div className="h-8 w-px bg-slate-800 mx-2"></div>
           <div>
-            <h2 className="font-black text-slate-100 tracking-tight text-sm uppercase">MCP Admin Command Center</h2>
-            <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Monitoramento Global de Infraestrutura</p>
+            <h2 className="font-black text-white text-base uppercase tracking-tight">Enterprise Infrastructure</h2>
+            <div className="flex items-center gap-4 mt-1">
+               <div className="flex items-center gap-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${remoteKeys['GEMINI_API_KEY'] ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Vault Status: {vaultUnlocked ? 'UNLOCKED' : 'LOCKED'}</span>
+               </div>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-           {isTestMode && (
-             <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full">
-                <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em]">Audit Mode Active</span>
-             </div>
-           )}
-           <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 rounded-full border border-slate-800">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sistema Nominal</span>
-           </div>
+        <div className="flex gap-4">
+           <button onClick={runCfoAnalysis} disabled={isAnalyzing} className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[10px] font-black uppercase">Auditoria</button>
+           <button onClick={handleSaveVault} disabled={isSaving || !vaultUnlocked} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-blue-600/20">Salvar Alterações</button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
-        <div className="max-w-6xl mx-auto space-y-10 pb-20">
+      <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((stat, i) => (
-              <div key={i} className="bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl hover:border-blue-500/30 transition-all">
-                <div className="text-3xl mb-4">{stat.icon}</div>
-                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{stat.label}</div>
-                <div className="text-3xl font-black text-white tracking-tighter">{stat.value}</div>
-              </div>
-            ))}
+          <div className="lg:col-span-7 space-y-8">
+             <div className="bg-white/5 border border-white/10 p-10 rounded-[3rem] space-y-8">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Configuração de APIs</h3>
+                   <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">AES-GCM Protocol</span>
+                </div>
+                
+                <div className="space-y-6">
+                   <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-500 uppercase px-2">Gemini Enterprise API Key</label>
+                      <input 
+                        type="password" 
+                        value={vaultInputs.GEMINI_API_KEY}
+                        onChange={e => setVaultInputs({...vaultInputs, GEMINI_API_KEY: e.target.value})}
+                        className="w-full p-4 bg-black/40 border border-white/5 rounded-2xl text-white font-mono text-xs focus:border-blue-500 outline-none"
+                        placeholder="••••••••••••••••"
+                      />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-500 uppercase px-2">Resend Mailer Key</label>
+                      <input 
+                        type="password" 
+                        value={vaultInputs.RESEND_API_KEY}
+                        onChange={e => setVaultInputs({...vaultInputs, RESEND_API_KEY: e.target.value})}
+                        className="w-full p-4 bg-black/40 border border-white/5 rounded-2xl text-white font-mono text-xs focus:border-blue-500 outline-none"
+                        placeholder="re_••••••••"
+                      />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-500 uppercase px-2">Browserless Cluster URL</label>
+                      <input 
+                        type="text" 
+                        value={vaultInputs.BROWSERLESS_URL}
+                        onChange={e => setVaultInputs({...vaultInputs, BROWSERLESS_URL: e.target.value})}
+                        className="w-full p-4 bg-black/40 border border-white/5 rounded-2xl text-white font-mono text-xs focus:border-blue-500 outline-none"
+                        placeholder="wss://chrome.browserless.io?token=..."
+                      />
+                   </div>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-8">
+                <div className="p-8 bg-white/5 border border-white/5 rounded-[2.5rem] text-center">
+                   <div className="text-3xl font-black text-white">{totalTokensConsumed}</div>
+                   <div className="text-[8px] font-black text-slate-500 uppercase mt-2">Tokens Processados</div>
+                </div>
+                <div className="p-8 bg-blue-600/10 border border-blue-500/20 rounded-[2.5rem] text-center">
+                   <div className="text-3xl font-black text-blue-500">{financialStats.currentMarkup}x</div>
+                   <div className="text-[8px] font-black text-blue-400 uppercase mt-2">Markup Global</div>
+                </div>
+             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            <div className="lg:col-span-2 space-y-6">
-               {/* Card do Supabase Cloud */}
-               <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
-                  <div className={`absolute top-0 right-0 w-32 h-32 blur-[80px] -z-0 opacity-20 ${isCloudConnected ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-widest mb-8 flex items-center gap-3 relative z-10">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                    Sincronização Cloud (Supabase)
-                  </h3>
-                  <div className="flex items-center justify-between p-6 bg-slate-950 border border-slate-800 rounded-3xl relative z-10">
-                    <div className="flex items-center gap-4">
-                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${isCloudConnected ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                         {isCloudConnected ? '☁️' : '🚫'}
-                       </div>
-                       <div>
-                          <div className="text-xs font-black text-white uppercase">Status da Conexão</div>
-                          <div className="text-[10px] text-slate-500 font-bold uppercase">Agentes & Configurações</div>
-                       </div>
-                    </div>
-                    <div className="text-right">
-                       <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${isCloudConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-                         {isCloudConnected ? 'Online e Sincronizado' : 'Offline / Erro de Configuração'}
-                       </span>
-                    </div>
+          <div className="lg:col-span-5 bg-black/40 border border-white/5 rounded-[3rem] p-10 h-[600px] overflow-hidden flex flex-col">
+             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Auditoria em Tempo Real</h3>
+             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 font-mono text-[9px]">
+                {cfoLog.map((log, i) => (
+                  <div key={i} className={`p-4 rounded-xl border ${
+                    log.type === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                    log.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 
+                    'bg-white/5 text-slate-400 border-white/5'
+                  }`}>
+                    [{new Date().toLocaleTimeString()}] {log.msg}
                   </div>
-               </div>
-
-               <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl">
-                  <h3 className="text-sm font-black text-white uppercase tracking-widest mb-8 flex items-center gap-3">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                    Estado das Engines de Resposta
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-6 bg-slate-950 border border-slate-800 rounded-3xl">
-                       <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-blue-600/10 rounded-2xl flex items-center justify-center text-blue-500 font-black">E1</div>
-                          <div>
-                             <div className="text-xs font-black text-white uppercase">Eden Engine (Primária)</div>
-                             <div className="text-[10px] text-slate-500 font-bold uppercase">https://app.eden.run/api</div>
-                          </div>
-                       </div>
-                       <div className="flex flex-col items-end">
-                          <span className="px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black rounded uppercase">Indisponível</span>
-                       </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-6 bg-slate-950 border border-slate-800 rounded-3xl">
-                       <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-purple-600/10 rounded-2xl flex items-center justify-center text-purple-500 font-black">E2</div>
-                          <div>
-                             <div className="text-xs font-black text-white uppercase">Google Gemini (Failover)</div>
-                             <div className="text-[10px] text-slate-500 font-bold uppercase">SDK Nativo @google/genai</div>
-                          </div>
-                       </div>
-                       <div className="flex flex-col items-end">
-                          <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[8px] font-black rounded uppercase animate-pulse">Ativa / Em Uso</span>
-                       </div>
-                    </div>
-                  </div>
-               </div>
-            </div>
-
-            <div className="space-y-6">
-               <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-xl">
-                  <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6">Manutenção do Núcleo</h3>
-                  <div className="space-y-4">
-                     <button className="w-full p-6 bg-slate-950 border border-slate-800 rounded-3xl text-left hover:border-blue-500 transition-all group">
-                        <div className="text-[10px] font-black text-slate-500 uppercase mb-1">Backup MCP</div>
-                        <div className="text-xs font-bold text-white group-hover:text-blue-400">Exportar Banco Dexie (.json)</div>
-                     </button>
-                     
-                     <div className="h-px bg-slate-800 my-6"></div>
-
-                     <button 
-                        onClick={() => resetAll()}
-                        className="w-full p-6 bg-red-950/20 border border-red-500/30 rounded-3xl text-left hover:bg-red-900/40 transition-all group"
-                     >
-                        <div className="text-[10px] font-black text-red-500 uppercase mb-1">Zona de Perigo</div>
-                        <div className="text-xs font-bold text-red-400">Wipe Total de Dados</div>
-                     </button>
-                  </div>
-               </div>
-            </div>
+                ))}
+             </div>
           </div>
+
         </div>
       </div>
     </div>

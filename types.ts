@@ -6,21 +6,62 @@ export enum ToolType {
   CODE_INTERPRETER = 'codeInterpreter',
   IMAGE_GEN = 'imageGeneration',
   DOCUMENT_READER = 'documentReader',
-  CHROME_BROWSER = 'chromeBrowser'
+  CHROME_BROWSER = 'chromeBrowser',
+  AGENT_DELEGATION = 'agentDelegation',
+  AUTH_BROWSER = 'authBrowser',
+  CAPTCHA_SOLVER = 'captchaSolver',
+  SELENIUM_AUTOMATION = 'seleniumAutomation',
+  FINANCIAL_CONTROLLER = 'financialController'
 }
 
-export interface AgentError {
+export type AgentStatus = 'idle' | 'working' | 'alert' | 'offline';
+
+export interface User {
   id: string;
-  code: 'TOOL_FAILURE' | 'SAFETY_BLOCK' | 'TOKEN_LIMIT' | 'API_ERROR' | 'LOGIC_ERROR';
-  message: string;
-  timestamp: number;
+  email: string;
+  passwordHash: string; // Em um app real usaríamos hash, aqui simularemos
+  name?: string;
 }
 
-export interface AgentPerformance {
-  precisionScore: number; // 0 a 100
-  totalExecutions: number;
-  successfulExecutions: number;
-  lastError?: AgentError;
+export interface WebhookConfig {
+  url: string;
+  enabled: boolean;
+  secret?: string;
+}
+
+export interface HandoverProtocols {
+  email: string;
+  webhook?: WebhookConfig;
+  autoExportCsv: boolean;
+}
+
+export interface AutomationStep {
+  id: string;
+  action: 'navigate' | 'click' | 'type' | 'captcha' | 'human_intervention';
+  selector?: string;
+  value?: string;
+  details?: string;
+}
+
+export interface MessageAttachment {
+  data: string;
+  mimeType: string;
+  fileName?: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+  timestamp: number;
+  engine?: 'eden' | 'gemini';
+  thought?: string;
+  automationSteps?: AutomationStep[];
+  grounding?: any[];
+  tokenUsage?: {
+    promptTokens: number;
+    candidatesTokens: number;
+    totalTokens: number;
+  };
 }
 
 export interface AgentVariable {
@@ -29,106 +70,77 @@ export interface AgentVariable {
   label: string;
 }
 
-export interface TaskResult {
+export interface QuickAction {
   id: string;
-  client_id: string;
-  agent_id: string;
-  task_name: string;
-  folder_path: string;
-  payload: any;
-  created_at: number;
+  label: string;
+  prompt: string;
+  icon: string;
+}
+
+export interface AgentCredential {
+  id: string;
+  label: string;
+  siteUrl: string;
+  username: string;
+  passwordSecret: string;
+}
+
+export interface KnowledgeDoc {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  base64Data: string;
 }
 
 export interface AgentConfig {
   id: string;
   name: string;
   description: string;
+  specialty: string; 
+  allocationTarget: string; 
   systemInstruction: string;
-  knowledgeBase?: string;
-  defaultFolder?: string;
-  targetUrls?: string[];
   tools: ToolType[];
-  toolConfigs: ToolConfig[];
-  routines: AgentRoutine[];
   model: string;
   icon: string;
-  temperature?: number;
-  variables?: AgentVariable[];
-  performance?: AgentPerformance;
-  errorHistory?: AgentError[];
+  status: AgentStatus;
+  handover: HandoverProtocols;
+  routines: any[];
+  variables: AgentVariable[];
+  credentials: AgentCredential[];
+  targetSites: string[];
+  knowledgeBase: KnowledgeDoc[];
+  temperature: number;
+  quickActions?: QuickAction[];
 }
 
-export interface ChatSession {
+export interface TaskResult {
   id: string;
   agentId: string;
-  title: string;
-  messages: ChatMessage[];
+  taskName: string;
+  summary: string;
+  costTokens: number;
+  estimatedHumanHours: number;
   createdAt: number;
-}
-
-export interface ActionReminder {
-  id: string;
-  agentId: string;
-  title: string;
-  completed: boolean;
-  createdAt: number;
-}
-
-export interface ToolConfig {
-  tool: ToolType;
-  customInstruction: string;
-  enabled: boolean;
-}
-
-export interface AgentRoutine {
-  id: string;
-  name: string;
-  isCloudScheduled: boolean; // NOVO: Define se roda no servidor
-  cronExpression?: string;    // NOVO: Expressão cron para o servidor
-  task: {
-    id: string;
-    target: string;
-    instruction: string;
-    alertCondition: string;
-  };
-  frequency: 'hourly' | 'daily' | 'weekly' | 'manual';
-  status: 'active' | 'paused' | 'error';
-  efficiencyScore: number;
-  lastServerRun?: number;     // NOVO: Timestamp da última execução offline
-  history: any[];
-}
-
-// Added to resolve compilation error in geminiService.ts
-export interface MessageAttachment {
-  name: string;
-  data: string; // base64 encoded string
-  mimeType: string;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  content: string;
-  timestamp: number;
-  engine?: 'eden' | 'gemini';
-  groundingUrls?: { uri: string; title: string }[];
-  thought?: string; 
-  generatedImages?: string[];
-  isStreaming?: boolean;
-  tokenUsage?: {
-    promptTokens: number;
-    candidatesTokens: number;
-    totalTokens: number;
-  };
+  status: 'success' | 'failed';
 }
 
 export interface AppState {
+  users: User[];
+  currentUser: User | null;
   agents: Record<string, AgentConfig>;
   activeAgentId: string | null;
   activeSessionId: string | null;
-  sessions: ChatSession[];
-  reminders: ActionReminder[];
+  sessions: any[];
   tokenBalance: number;
   totalTokensConsumed: number;
-  engineStatus: 'healthy' | 'fallback' | 'offline';
+  taskResults: TaskResult[];
   clientId: string;
+  globalInfra: {
+    executionMode: string;
+    captchaApiKey?: string;
+  };
+  financialStats: {
+    userSalesVolume: number;
+    currentMarkup: number;
+  };
 }

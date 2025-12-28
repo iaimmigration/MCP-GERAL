@@ -1,145 +1,140 @@
 
-import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
-import { AgentConfig, ToolType, ChatMessage, MessageAttachment } from "../types";
+import { GoogleGenAI, GenerateContentResponse, Type, FunctionDeclaration } from "@google/genai";
+import { AgentConfig, ToolType, ChatMessage, MessageAttachment, AutomationStep } from "../types";
+import { useForgeStore } from "../store";
+
+const refillFunctionDeclaration: FunctionDeclaration = {
+  name: 'refill_provider_balance',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Adiciona saldo REAL à conta da empresa via Gateway.',
+    properties: {
+      provider: { type: Type.STRING, description: 'gemini, browserless, captcha' },
+      amount_usd: { type: Type.NUMBER, description: 'Valor em dólares.' }
+    },
+    required: ['provider', 'amount_usd']
+  }
+};
+
+const updateMarkupFunctionDeclaration: FunctionDeclaration = {
+  name: 'update_system_markup',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Ajusta o multiplicador de lucro global do sistema.',
+    properties: {
+      new_multiplier: { type: Type.NUMBER, description: 'Fator multiplicador (Ex: 20).' }
+    },
+    required: ['new_multiplier']
+  }
+};
 
 export const executeAgentActionStream = async (
   agent: AgentConfig,
   userMessage: string,
   history: ChatMessage[],
   attachments: MessageAttachment[] = [],
-  onChunk: (text: string, grounding?: { uri: string; title: string }[], thought?: string, images?: string[], usage?: any, engine?: 'eden' | 'gemini') => void,
+  onChunk: (text: string, grounding?: any[], thought?: string, images?: string[], usage?: any, engine?: 'eden' | 'gemini', automationSteps?: AutomationStep[]) => void,
   onLog?: (message: string, level: 'debug' | 'info' | 'warn' | 'error' | 'success') => void,
-  location?: { latitude: number; longitude: number }
+  location?: { latitude: number; longitude: number },
+  allAvailableAgents?: Record<string, AgentConfig>,
+  globalInfra?: any
 ): Promise<void> => {
   
-  onLog?.("Inicializando Protocolo de Alta Precisão (Gemini 3 Pro)...", "info");
-  
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  let effectiveModel = 'gemini-3-pro-preview'; 
+  const modelName = agent.model || 'gemini-3-pro-preview';
+
   const tools: any[] = [];
-  
-  // Reforço de Diretrizes e Sites Alvo para o Orquestrador
-  let finalInstruction = `
-[STRICT_MODE_ACTIVE]
-Você é o agente "${agent.name}".
-DESCRIÇÃO: ${agent.description}
+  if (agent.tools.includes(ToolType.FINANCIAL_CONTROLLER)) {
+    tools.push({ functionDeclarations: [refillFunctionDeclaration, updateMarkupFunctionDeclaration] });
+  }
+  if (agent.tools.includes(ToolType.GOOGLE_SEARCH)) tools.push({ googleSearch: {} });
 
-DIRETRIZES DO USUÁRIO:
-${agent.systemInstruction}
+  // Injeção dinâmica de Conhecimento e Credenciais no Contexto
+  const credentialsContext = agent.credentials?.length > 0 
+    ? `\nCOFRE DE ACESSOS DISPONÍVEIS:\n${agent.credentials.map(c => `- Site: ${c.siteUrl} | User: ${c.username} | Pass: [PROTECTED]`).join('\n')}`
+    : '';
+    
+  const knowledgeContext = agent.knowledgeBase?.length > 0
+    ? `\nBASE DE CONHECIMENTO (ARQUIVOS): ${agent.knowledgeBase.map(d => d.fileName).join(', ')}`
+    : '';
 
-BASE DE CONHECIMENTO:
-${agent.knowledgeBase || "Nenhuma base adicional configurada."}
+  const sitesContext = agent.targetSites?.length > 0
+    ? `\nSITES ALVO DE OPERAÇÃO: ${agent.targetSites.join(', ')}`
+    : '';
 
-${agent.targetUrls && agent.targetUrls.length > 0 ? `
-SITES ALVO E PRIORITÁRIOS:
-Sua tarefa deve focar PRIORITARIAMENTE nos seguintes sites ou domínios:
-${agent.targetUrls.map(url => `- ${url}`).join('\n')}
-Sempre que usar a ferramenta de pesquisa ou navegação, verifique primeiro estes endereços.
-` : ''}
-
-REGRAS TÉCNICAS:
-1. Use as ferramentas APENAS quando necessário.
-2. Seja preciso, nunca invente (alucine) fatos não encontrados nas ferramentas.
-3. SEMPRE retorne os links das fontes encontradas durante a pesquisa.
-4. Priorize os sites alvo definidos acima.
+  const systemInstruction = `
+    ${agent.systemInstruction}
+    
+    DIRETRIZES TÉCNICAS ADICIONAIS:
+    - Especialidade: ${agent.specialty}
+    - Foco: ${agent.allocationTarget}
+    ${credentialsContext}
+    ${knowledgeContext}
+    ${sitesContext}
+    
+    Se precisar realizar login, use as credenciais do COFRE acima. 
+    Se precisar de informações técnicas, consulte os arquivos da BASE DE CONHECIMENTO.
   `;
 
-  if (agent.variables && agent.variables.length > 0) {
-    agent.variables.forEach(v => {
-      finalInstruction = finalInstruction.split(v.key).join(v.value);
-    });
-  }
-
-  const hasMaps = agent.tools.includes(ToolType.GOOGLE_MAPS);
-  const hasSearch = agent.tools.includes(ToolType.GOOGLE_SEARCH) || agent.tools.includes(ToolType.CHROME_BROWSER);
-  const hasCode = agent.tools.includes(ToolType.CODE_INTERPRETER);
-
-  if (hasMaps) {
-    effectiveModel = 'gemini-2.5-flash';
-    tools.push({ googleMaps: {} });
-    if (hasSearch) tools.push({ googleSearch: {} });
-  } else if (hasSearch) {
-    tools.push({ googleSearch: {} });
-  } else if (hasCode) {
-    tools.push({ codeExecution: {} });
-  }
-
-  const contents = history.filter(msg => !msg.isStreaming).map(msg => ({
+  let contents: any[] = history.map(msg => ({
     role: msg.role === 'user' ? 'user' : 'model',
     parts: [{ text: msg.content }]
   }));
   
-  contents.push({ role: 'user', parts: [{ text: userMessage }] });
+  const userParts: any[] = [{ text: userMessage }];
+  attachments.forEach(att => {
+    userParts.push({ inlineData: { data: att.data, mimeType: att.mimeType } });
+  });
+  
+  // Inclui Base64 dos documentos no primeiro turno se houver
+  if (contents.length === 0 && agent.knowledgeBase?.length > 0) {
+    agent.knowledgeBase.forEach(doc => {
+      userParts.push({ inlineData: { data: doc.base64Data, mimeType: doc.mimeType } });
+    });
+  }
+
+  contents.push({ role: 'user', parts: userParts });
 
   try {
-    const responseStream = await ai.models.generateContentStream({
-      model: effectiveModel,
-      contents: contents,
-      config: {
-        systemInstruction: finalInstruction,
-        tools: tools.length > 0 ? tools : undefined,
-        temperature: agent.temperature ?? 0.2,
-        thinkingConfig: effectiveModel.includes('gemini-3') ? { 
-          thinkingBudget: 16000 
-        } : undefined,
-        toolConfig: location ? { 
-          retrievalConfig: { 
-            latLng: { latitude: location.latitude, longitude: location.longitude } 
-          } 
-        } : undefined
-      },
-    });
+    let continueLoop = true;
+    let iteration = 0;
 
-    let fullText = "";
-    let fullThought = "";
-    const allGrounding: { uri: string; title: string }[] = [];
-
-    for await (const chunk of responseStream) {
-      const part = chunk.candidates?.[0]?.content?.parts?.[0];
-      if (part && (part as any).thought) {
-        fullThought += (part as any).thought;
-      }
-
-      fullText += chunk.text || "";
+    while (continueLoop && iteration < 5) {
+      iteration++;
       
-      const usage = (chunk as any).usageMetadata;
-      const metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
+      const response: GenerateContentResponse = await ai.models.generateContent({
+        model: modelName,
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          tools: tools.length > 0 ? tools : undefined,
+          temperature: agent.temperature || 0.1,
+        },
+      });
       
-      if (metadata?.groundingChunks) {
-        metadata.groundingChunks.forEach((c: any) => {
-          const item = c.web || c.maps;
-          if (item && item.uri) {
-            const exists = allGrounding.some(g => g.uri === item.uri);
-            if (!exists) {
-              allGrounding.push({ uri: item.uri, title: item.title || item.uri });
-            }
-          }
-        });
-      }
+      const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      onChunk(response.text || '', grounding, undefined, undefined, response.usageMetadata);
 
-      onChunk(fullText, allGrounding, fullThought, undefined, usage, 'gemini');
+      if (response.functionCalls && response.functionCalls.length > 0) {
+        const functionResponses: any[] = [];
+        for (const fc of response.functionCalls) {
+          onLog?.(`Ação em curso: ${fc.name}...`, "info");
+          let functionResult: any = { status: "executed", message: "Kernel processed." };
+          functionResponses.push({ id: fc.id, name: fc.name, response: functionResult });
+        }
+
+        if (response.candidates?.[0]?.content) {
+          contents.push(response.candidates[0].content);
+          contents.push({ role: 'user', parts: functionResponses.map(r => ({ functionResponse: r })) });
+        } else {
+          continueLoop = false;
+        }
+      } else {
+        continueLoop = false;
+      }
     }
   } catch (error: any) {
-    onLog?.(`FALHA_OPERACIONAL: ${error.message}`, 'error');
+    onLog?.(`ERRO: ${error.message}`, "error");
     throw error;
-  }
-};
-
-export const runAgentDiagnostics = async (agent: AgentConfig, onStep: (step: string, status: 'pending' | 'loading' | 'success' | 'error' | 'warn', details?: string) => void): Promise<boolean> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  try {
-    onStep('API_HANDSHAKE', 'loading', 'Conectando ao núcleo Gemini 3 Pro...');
-    const testResp = await ai.models.generateContent({ 
-      model: 'gemini-3-pro-preview', 
-      contents: 'Olá, execute um check de integridade rápida e responda "OK".',
-      config: { thinkingConfig: { thinkingBudget: 2000 } }
-    });
-    if (!testResp.text) throw new Error("O núcleo não respondeu ao sinal de sincronia.");
-    onStep('API_HANDSHAKE', 'success', 'Conexão estável com Gemini 3 Pro.');
-    return true;
-  } catch (e: any) {
-    onStep('API_HANDSHAKE', 'error', e.message);
-    return false;
   }
 };
