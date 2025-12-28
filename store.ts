@@ -21,7 +21,6 @@ interface ForgeStore extends AppState {
   masterSecret: string;
   vaultUnlocked: boolean;
   remoteKeys: Record<string, string>;
-  isCheckoutOpen: boolean;
   hydrate: () => Promise<void>;
   login: (email: string, passwordHash: string) => { success: boolean; error?: string };
   register: (email: string, passwordHash: string) => { success: boolean; error?: string };
@@ -35,19 +34,20 @@ interface ForgeStore extends AppState {
   consumeTokens: (amount: number) => void;
   persist: () => Promise<void>;
   setCheckoutOpen: (open: boolean) => void;
+  isCheckoutOpen: boolean;
   addCredits: (amount: number) => void;
   
-  // Messaging & Sessions
+  // Ações de Mensagens e Sessões
   addMessage: (sessionId: string, message: ChatMessage) => void;
   updateLastMessage: (sessionId: string, messageUpdate: Partial<ChatMessage>) => void;
   createSession: (agentId: string) => void;
   
-  // Agents & Tasks
+  // Ações de Agentes e Tarefas
   updateAgentStatus: (agentId: string, status: AgentStatus) => void;
   saveTaskResult: (result: TaskResult) => void;
   triggerRoutine: (agentId: string, routineId: string) => Promise<void>;
 
-  // Infrastructure
+  // Ações de Infraestrutura
   unlockVault: (secret: string) => Promise<boolean>;
   syncRemoteKeys: () => Promise<void>;
 }
@@ -94,20 +94,14 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   isCheckoutOpen: false,
 
   hydrate: async () => {
-    try {
-      const saved = await db.state.get('main');
-      if (saved) {
-        // Use functional set to merge carefully
-        set((state) => ({ ...state, ...saved.data }));
-      } else {
-        const defaultAgentsRecord = DEFAULT_AGENTS.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
-        set({ agents: defaultAgentsRecord });
-      }
-    } catch (e) {
-      console.error("Hydration failed", e);
-    } finally {
-      set({ isHydrated: true });
+    const saved = await db.state.get('main');
+    if (saved) {
+      set({ ...saved.data });
+    } else {
+      const defaultAgentsRecord = DEFAULT_AGENTS.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
+      set({ agents: defaultAgentsRecord });
     }
+    set({ isHydrated: true });
   },
 
   register: (email, passwordHash) => {
@@ -131,7 +125,6 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
       return { success: true };
     }
     
-    // Admin fallback
     if (users.length === 0 && email === 'admin@forge.com' && passwordHash === 'admin') {
       const admin: User = { id: 'admin', email: 'admin@forge.com', passwordHash: 'admin' };
       set({ users: [admin], currentUser: admin, isAuthenticated: true });
@@ -188,7 +181,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     get().persist();
   },
 
-  // Messaging & Sessions
+  // Implementação de Mensagens e Sessões
   addMessage: (sessionId, message) => {
     set(state => ({
       sessions: state.sessions.map(s => 
@@ -229,18 +222,14 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     get().persist();
   },
 
-  // Agents & Tasks
+  // Implementação de Agentes e Tarefas
   updateAgentStatus: (agentId, status) => {
-    set(state => {
-      const agent = state.agents[agentId];
-      if (!agent) return state;
-      return {
-        agents: {
-          ...state.agents,
-          [agentId]: { ...agent, status }
-        }
-      };
-    });
+    set(state => ({
+      agents: {
+        ...state.agents,
+        [agentId]: { ...state.agents[agentId], status }
+      }
+    }));
     get().persist();
   },
 
@@ -252,21 +241,21 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   },
 
   triggerRoutine: async (agentId, routineId) => {
-    console.log(`[ROUTINE] Triggering ${routineId} for agent ${agentId}`);
+    console.log(`[ROUTINE] Disparando rotina ${routineId} para agente ${agentId}`);
+    // A lógica de execução real seria injetada aqui
   },
 
-  // Infra
+  // Infraestrutura
   unlockVault: async (secret) => {
-    if (secret === 'admin') {
+    if (secret === 'admin') { // Simulação de verificação
       set({ masterSecret: secret, vaultUnlocked: true });
-      get().persist();
       return true;
     }
     return false;
   },
 
   syncRemoteKeys: async () => {
-    console.log("[INFRA] Syncing remote keys...");
+    console.log("[INFRA] Sincronizando chaves remotas...");
   },
 
   persist: async () => {

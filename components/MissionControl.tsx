@@ -14,15 +14,15 @@ const LiveTelemetryLog: React.FC<{ logs: {msg: string, time: string, type?: stri
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-transparent opacity-30"></div>
       <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
          <span className="text-blue-500 font-black tracking-widest uppercase">Live Kernel Stream</span>
-         <span className="animate-pulse w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></span>
+         <span className="animate-pulse w-2 h-2 bg-emerald-500 rounded-full"></span>
       </div>
       <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2">
         {logs.map((log, i) => (
           <div key={i} className="animate-in slide-in-from-left-2 duration-300 flex gap-3">
-            <span className="text-slate-600 shrink-0 font-bold">[{log.time}]</span>
+            <span className="text-slate-600 shrink-0">[{log.time}]</span>
             <span className={`
               ${log.type === 'success' ? 'text-emerald-400' : 
-                log.type === 'error' ? 'text-red-500 font-black' : 
+                log.type === 'error' ? 'text-red-500' : 
                 log.type === 'handover' ? 'text-purple-400 font-bold' : 'text-slate-400'}
             `}>
               {log.msg}
@@ -62,21 +62,14 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
     if (isExecuting) return;
     setIsExecuting(true);
     setLastEmailStatus(null);
-    
-    // Defensive check to satisfy the user's error report
-    if (typeof updateAgentStatus === 'function') {
-      updateAgentStatus(agent.id, 'working');
-    } else {
-      console.warn("Store Error: updateAgentStatus is not defined.");
-    }
-
+    updateAgentStatus(agent.id, 'working');
     setLogs([]);
     setExecutionProgress(0);
     addLog("Inicializando Agente em Sandbox Privada...", "info");
 
     const progressInterval = setInterval(() => {
-      setExecutionProgress(p => p >= 95 ? 95 : p + 0.5);
-    }, 150);
+      setExecutionProgress(p => p >= 90 ? 90 : p + 1);
+    }, 200);
 
     let missionSummary = "";
 
@@ -90,13 +83,14 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
       clearInterval(progressInterval);
       setExecutionProgress(100);
       
+      // PERSISTÊNCIA DO RESULTADO PARA ROI
       saveTaskResult({
         id: crypto.randomUUID(),
         agentId: agent.id,
         taskName: "Execução Autônoma de Skill",
         summary: missionSummary,
-        costTokens: 1500,
-        estimatedHumanHours: 2,
+        costTokens: 1500, // Simulado
+        estimatedHumanHours: 2, // Estimativa de economia
         createdAt: Date.now(),
         status: 'success'
       });
@@ -107,17 +101,13 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
         setLastEmailStatus(res && !res.error ? "Entregue" : "Falha");
       }
 
-      if (typeof updateAgentStatus === 'function') {
-        updateAgentStatus(agent.id, 'idle');
-      }
+      updateAgentStatus(agent.id, 'idle');
       setIsExecuting(false);
 
     } catch (e: any) {
       clearInterval(progressInterval);
       addLog(`FALHA: ${e.message}`, "error");
-      if (typeof updateAgentStatus === 'function') {
-        updateAgentStatus(agent.id, 'alert');
-      }
+      updateAgentStatus(agent.id, 'alert');
       setIsExecuting(false);
     }
   };
@@ -130,11 +120,11 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth={3}/></svg>
           </button>
           <div className="flex items-center gap-4">
-             <div className="text-3xl bg-blue-600/10 p-2 rounded-2xl border border-blue-500/20 shadow-[0_0_15px_rgba(37,99,235,0.1)]">{agent.icon}</div>
+             <div className="text-3xl bg-blue-600/10 p-2 rounded-2xl border border-blue-500/20">{agent.icon}</div>
              <div>
                 <h2 className="font-black text-white text-base uppercase tracking-tight">{agent.name}</h2>
                 <div className="flex items-center gap-2 mt-0.5">
-                   <div className={`w-1.5 h-1.5 rounded-full ${agent.status === 'working' ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                   <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${agent.status === 'working' ? 'bg-blue-500' : 'bg-emerald-500'}`}></div>
                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{agent.allocationTarget}</span>
                 </div>
              </div>
@@ -143,7 +133,7 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
         <div className="flex gap-3">
            <button onClick={() => setActiveTab('console')} className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${activeTab === 'console' ? 'bg-white/10 border-white/20 text-white' : 'text-slate-500 border-transparent'}`}>Live Console</button>
            <button onClick={() => setActiveTab('history')} className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${activeTab === 'history' ? 'bg-white/10 border-white/20 text-white' : 'text-slate-500 border-transparent'}`}>Histórico ({agentHistory.length})</button>
-           <button onClick={handleStartRoutine} disabled={isExecuting} className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-500 shadow-lg shadow-blue-600/20 active:scale-95 transition-all">Iniciar Missão</button>
+           <button onClick={handleStartRoutine} disabled={isExecuting} className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-500 shadow-lg shadow-blue-600/20">Iniciar Missão</button>
         </div>
       </header>
 
@@ -152,51 +142,47 @@ const MissionControl: React.FC<MissionControlProps> = ({ agent, onOpenChat, onEd
           <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
             <div className="lg:col-span-8 bg-black rounded-[3rem] border border-white/5 p-12 flex flex-col justify-center items-center gap-6 relative overflow-hidden">
                {isExecuting ? (
-                 <div className="w-full space-y-12 animate-in fade-in zoom-in-95 duration-500">
+                 <div className="w-full space-y-8 animate-in fade-in zoom-in-95">
                     <div className="flex justify-between items-end">
-                       <div>
-                          <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] animate-pulse block mb-2">Kernel Protocol Beta</span>
-                          <h3 className="text-white font-black text-xl uppercase tracking-tighter">Injetando Bypass Autônomo...</h3>
-                       </div>
-                       <span className="text-white font-mono text-5xl font-black">{Math.round(executionProgress)}%</span>
+                       <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest animate-pulse">Injetando Protocolos Autônomos</span>
+                       <span className="text-white font-mono text-4xl font-black">{Math.round(executionProgress)}%</span>
                     </div>
-                    <div className="h-6 bg-white/5 rounded-full overflow-hidden border border-white/10 p-1">
-                       <div className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-blue-400 rounded-full transition-all duration-300 shadow-[0_0_20px_rgba(37,99,235,0.4)]" style={{ width: `${executionProgress}%` }}></div>
+                    <div className="h-4 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                       <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-300" style={{ width: `${executionProgress}%` }}></div>
                     </div>
-                    <p className="text-center text-[9px] font-black text-slate-500 uppercase tracking-widest">Não feche esta janela enquanto o processamento estiver em curso.</p>
                  </div>
                ) : (
-                 <div className="text-center space-y-6 opacity-40 hover:opacity-100 transition-opacity">
-                    <div className="text-7xl animate-bounce">📡</div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white">Aguardando Comando do Console Central</p>
+                 <div className="text-center space-y-4 opacity-30">
+                    <div className="text-6xl">📡</div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white">Aguardando Comando de Campo</p>
                  </div>
                )}
             </div>
-            <div className="lg:col-span-4 h-[550px]">
+            <div className="lg:col-span-4 h-[500px]">
               <LiveTelemetryLog logs={logs} />
             </div>
           </div>
         ) : (
           <div className="max-w-5xl mx-auto space-y-6">
              {agentHistory.length === 0 ? (
-               <div className="py-32 text-center space-y-6 bg-white/5 rounded-[4rem] border border-dashed border-white/10 animate-fade-in">
-                  <div className="text-6xl opacity-10">📂</div>
-                  <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">Arquivos de Missão Vazios</p>
+               <div className="py-20 text-center space-y-4 bg-white/5 rounded-[3rem] border border-dashed border-white/10">
+                  <div className="text-4xl opacity-20">📂</div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nenhuma missão arquivada para este agente.</p>
                </div>
              ) : (
                agentHistory.map((task) => (
-                 <div key={task.id} className="bg-white/5 border border-white/10 p-10 rounded-[3.5rem] flex flex-col md:flex-row justify-between gap-8 hover:border-blue-500/40 hover:bg-white/[0.07] transition-all group animate-in slide-in-from-bottom-4">
-                    <div className="space-y-6 flex-1">
-                       <div className="flex items-center gap-4">
-                          <span className="px-4 py-1.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full text-[9px] font-black uppercase tracking-widest">Sucesso</span>
+                 <div key={task.id} className="bg-black/40 border border-white/5 p-8 rounded-[2.5rem] flex flex-col md:flex-row justify-between gap-6 hover:border-blue-500/20 transition-all">
+                    <div className="space-y-4 flex-1">
+                       <div className="flex items-center gap-3">
+                          <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 rounded text-[8px] font-black uppercase">Sucesso</span>
                           <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{new Date(task.createdAt).toLocaleString()}</span>
                        </div>
-                       <p className="text-white text-lg font-medium leading-relaxed italic opacity-90 group-hover:opacity-100 transition-opacity">"{task.summary}"</p>
+                       <p className="text-white text-sm font-medium leading-relaxed italic">"{task.summary.slice(0, 150)}..."</p>
                     </div>
-                    <div className="md:w-56 p-8 bg-black/40 rounded-[2.5rem] border border-white/5 flex flex-col justify-center items-center gap-2 shadow-inner">
-                       <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Eficiência Gerada</span>
-                       <span className="text-3xl font-black text-emerald-500">R$ {task.estimatedHumanHours * 50}</span>
-                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest border-t border-white/5 pt-2 mt-2 w-full text-center">{task.estimatedHumanHours}h Humanas</span>
+                    <div className="md:w-48 p-6 bg-white/5 rounded-2xl border border-white/5 flex flex-col justify-center items-center gap-1">
+                       <span className="text-[8px] font-black text-slate-500 uppercase">Economia Gerada</span>
+                       <span className="text-xl font-black text-emerald-500">R$ {task.estimatedHumanHours * 50}</span>
+                       <span className="text-[7px] font-bold text-slate-600 uppercase">{task.estimatedHumanHours}h Humanas</span>
                     </div>
                  </div>
                ))
