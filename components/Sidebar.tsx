@@ -14,7 +14,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onOpenVocalArchitect, onG
   const { 
     agents, sessions, activeAgentId, activeSessionId, tokenBalance,
     setActiveAgent, setActiveSession, 
-    createSession, setCheckoutOpen, user, logout
+    createSession, setCheckoutOpen, currentUser, logout
   } = useForgeStore();
 
   const agentsList: AgentConfig[] = Object.values(agents);
@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onOpenVocalArchitect, onG
                <p className="text-[8px] mt-1 text-blue-400 uppercase tracking-widest font-black">Digital Workforce OS</p>
              </div>
            </div>
-           <button onClick={logout} className="p-2 bg-white/5 rounded-xl border border-white/10 text-slate-400 hover:text-red-500 transition-all">
+           <button onClick={logout} className="p-2 bg-white/5 rounded-xl border border-white/10 text-slate-400 hover:text-red-500 transition-all" title={currentUser?.email}>
              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"/></svg>
            </button>
         </div>
@@ -60,7 +60,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewAgent, onOpenVocalArchitect, onG
             {agentsList.map((agent: AgentConfig) => (
               <button
                 key={agent.id}
-                onClick={() => setActiveAgent(agent.id)}
+                onClick={() => {
+                  setActiveAgent(agent.id);
+                  // Verifica se já existe uma sessão para este agente ou cria uma nova
+                  const existingSession = sessions.find(s => s.agentId === agent.id);
+                  if (existingSession) {
+                    setActiveSession(existingSession.id);
+                  } else {
+                    createSession(agent.id);
+                  }
+                }}
                 className={`w-full text-left p-4 rounded-2xl transition-all flex items-center gap-4 group border ${
                   activeAgentId === agent.id 
                     ? 'bg-blue-600 border-blue-500 text-white shadow-2xl' 

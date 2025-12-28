@@ -1,7 +1,7 @@
 
 import { create } from 'zustand';
 import { Dexie, type EntityTable } from 'dexie';
-import { AgentConfig, AppState, User } from './types';
+import { AgentConfig, AppState, User, ChatMessage, TaskResult, AgentStatus } from './types';
 import { DEFAULT_AGENTS } from './constants';
 
 class ForgeDatabase extends Dexie {
@@ -20,6 +20,8 @@ interface ForgeStore extends AppState {
   vocalDraft: AgentConfig;
   masterSecret: string;
   vaultUnlocked: boolean;
+  remoteKeys: Record<string, string>;
+  isCheckoutOpen: boolean;
   hydrate: () => Promise<void>;
   login: (email: string, passwordHash: string) => { success: boolean; error?: string };
   register: (email: string, passwordHash: string) => { success: boolean; error?: string };
@@ -33,8 +35,21 @@ interface ForgeStore extends AppState {
   consumeTokens: (amount: number) => void;
   persist: () => Promise<void>;
   setCheckoutOpen: (open: boolean) => void;
-  isCheckoutOpen: boolean;
   addCredits: (amount: number) => void;
+  
+  // Messaging & Sessions
+  addMessage: (sessionId: string, message: ChatMessage) => void;
+  updateLastMessage: (sessionId: string, messageUpdate: Partial<ChatMessage>) => void;
+  createSession: (agentId: string) => void;
+  
+  // Agents & Tasks
+  updateAgentStatus: (agentId: string, status: AgentStatus) => void;
+  saveTaskResult: (result: TaskResult) => void;
+  triggerRoutine: (agentId: string, routineId: string) => Promise<void>;
+
+  // Infrastructure
+  unlockVault: (secret: string) => Promise<boolean>;
+  syncRemoteKeys: () => Promise<void>;
 }
 
 const createInitialDraft = (id = crypto.randomUUID()): AgentConfig => ({
@@ -73,19 +88,26 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
   vocalDraft: createInitialDraft(),
   masterSecret: '',
   vaultUnlocked: false,
+  remoteKeys: {},
   isHydrated: false,
   isAuthenticated: false,
   isCheckoutOpen: false,
 
   hydrate: async () => {
-    const saved = await db.state.get('main');
-    if (saved) {
-      set({ ...saved.data });
-    } else {
-      const defaultAgentsRecord = DEFAULT_AGENTS.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
-      set({ agents: defaultAgentsRecord });
+    try {
+      const saved = await db.state.get('main');
+      if (saved) {
+        // Use functional set to merge carefully
+        set((state) => ({ ...state, ...saved.data }));
+      } else {
+        const defaultAgentsRecord = DEFAULT_AGENTS.reduce((acc, agent) => ({ ...acc, [agent.id]: agent }), {});
+        set({ agents: defaultAgentsRecord });
+      }
+    } catch (e) {
+      console.error("Hydration failed", e);
+    } finally {
+      set({ isHydrated: true });
     }
-    set({ isHydrated: true });
   },
 
   register: (email, passwordHash) => {
@@ -109,7 +131,7 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
       return { success: true };
     }
     
-    // Fallback para desenvolvimento (se não houver usuários)
+    // Admin fallback
     if (users.length === 0 && email === 'admin@forge.com' && passwordHash === 'admin') {
       const admin: User = { id: 'admin', email: 'admin@forge.com', passwordHash: 'admin' };
       set({ users: [admin], currentUser: admin, isAuthenticated: true });
@@ -166,6 +188,87 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
     get().persist();
   },
 
+  // Messaging & Sessions
+  addMessage: (sessionId, message) => {
+    set(state => ({
+      sessions: state.sessions.map(s => 
+        s.id === sessionId ? { ...s, messages: [...s.messages, message] } : s
+      )
+    }));
+    get().persist();
+  },
+
+  updateLastMessage: (sessionId, messageUpdate) => {
+    set(state => ({
+      sessions: state.sessions.map(s => {
+        if (s.id === sessionId) {
+          const lastIdx = s.messages.length - 1;
+          if (lastIdx < 0) return s;
+          const updatedMessages = [...s.messages];
+          updatedMessages[lastIdx] = { ...updatedMessages[lastIdx], ...messageUpdate };
+          return { ...s, messages: updatedMessages };
+        }
+        return s;
+      })
+    }));
+    get().persist();
+  },
+
+  createSession: (agentId) => {
+    const newSession = {
+      id: crypto.randomUUID(),
+      agentId,
+      messages: [],
+      createdAt: Date.now()
+    };
+    set(state => ({
+      sessions: [...state.sessions, newSession],
+      activeSessionId: newSession.id,
+      activeAgentId: agentId
+    }));
+    get().persist();
+  },
+
+  // Agents & Tasks
+  updateAgentStatus: (agentId, status) => {
+    set(state => {
+      const agent = state.agents[agentId];
+      if (!agent) return state;
+      return {
+        agents: {
+          ...state.agents,
+          [agentId]: { ...agent, status }
+        }
+      };
+    });
+    get().persist();
+  },
+
+  saveTaskResult: (result) => {
+    set(state => ({
+      taskResults: [...state.taskResults, result]
+    }));
+    get().persist();
+  },
+
+  triggerRoutine: async (agentId, routineId) => {
+    console.log(`[ROUTINE] Triggering ${routineId} for agent ${agentId}`);
+  },
+
+  // Infra
+  unlockVault: async (secret) => {
+    if (secret === 'admin') {
+      set({ masterSecret: secret, vaultUnlocked: true });
+      get().persist();
+      return true;
+    }
+    return false;
+  },
+
+  syncRemoteKeys: async () => {
+    console.log("[INFRA] Syncing remote keys...");
+  },
+
   persist: async () => {
     const state = get();
     await db.state.put({ id: 'main', data: {
@@ -180,7 +283,10 @@ export const useForgeStore = create<ForgeStore>((set, get) => ({
       financialStats: state.financialStats,
       globalInfra: state.globalInfra,
       isAuthenticated: state.isAuthenticated,
-      vocalDraft: state.vocalDraft
+      vocalDraft: state.vocalDraft,
+      remoteKeys: state.remoteKeys,
+      vaultUnlocked: state.vaultUnlocked,
+      masterSecret: state.masterSecret
     }});
   }
 }));
